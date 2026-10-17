@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import filter_fields %}
+{% block content %}
+{% if recording %}
+<div class="card"><span class="pulse"></span> Devam eden kayıt:
+  {% for c in recording %}<a href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a> {% endfor %}
+</div>
+{% endif %}
+
+<div class="grid">
+<div class="card">
+  <h1>Yeni ekran yakalaması</h1>
+  <p class="muted small">"Başlat"a basın, Siron'da incelemek istediğiniz ekranı açıp işlemi yapın, sonra "Durdur"a basın.
+     Bu aralıkta Siron kullanıcısının çalıştırdığı tüm SQL'ler audit'ten alınır.</p>
+  <form method="post" action="{{ url_for('siron.start_capture') }}">
+    <label>Ekran / işlem adı</label><input type="text" name="name" placeholder="Örn. Müşteri Detay - Hesaplar sekmesi" required>
+    <label>Not</label><input type="text" name="notes">
+    <details><summary class="small">Filtreler</summary>{{ filter_fields(settings) }}</details>
+    <button class="big">Başlat</button>
+  </form>
+</div>
+
+<div class="card">
+  <h1>Geçmiş zaman aralığından</h1>
+  <p class="muted small">Zamanlar veritabanı sunucusunun yerel saatidir.</p>
+  <form method="post" action="{{ url_for('siron.capture_from_range') }}">
+    <label>Ad</label><input type="text" name="name" required>
+    <div class="row">
+      <div><label>Başlangıç</label><input type="datetime-local" step="1" name="start" required></div>
+      <div><label>Bitiş</label><input type="datetime-local" step="1" name="end" required></div>
+    </div>
+    <details><summary class="small">Filtreler</summary>{{ filter_fields(settings) }}</details>
+    <button>Kayıtları getir</button>
+  </form>
+</div>
+
+<div class="card">
+  <h1>Nesne kataloğu</h1>
+  <p class="small">{{ object_count }} nesne yüklü ({{ settings.siron_schemas|join(', ') }}).
+    Katalog yüklüyse tablo tespiti SQL içindeki tüm gerçek nesne adlarına göre yapılır (paket/fonksiyonlar dahil);
+    değilse FROM/JOIN/INTO/UPDATE sezgiseli kullanılır.</p>
+  <form method="post" action="{{ url_for('siron.refresh_objects') }}"><button class="secondary">Kataloğu yenile</button></form>
+</div>
+</div>
+
+<h2>Yakalamalar</h2>
+<table>
+  <tr><th>#</th><th>Ad</th><th>Durum</th><th>Başlangıç (DB saati)</th><th>Bitiş</th><th>Kaynak</th><th>Kayıt</th><th>Not</th></tr>
+  {% for c in captures %}
+  <tr>
+    <td>{{ c.id }}</td>
+    <td><a href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a></td>
+    <td>{% if c.status == 'recording' %}<span class="badge rec">kayıtta</span>{% else %}<span class="badge ok">tamam</span>{% endif %}
+        {% if c.is_noise %}<span class="badge noise">gürültü</span>{% endif %}</td>
+    <td>{{ c.start_local[:19] }}</td><td>{{ (c.end_local or '')[:19] }}</td>
+    <td>{{ c.source }}</td><td>{{ c.record_count }}</td><td class="small">{{ c.notes or '' }}</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="8" class="muted">Henüz yakalama yok.</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

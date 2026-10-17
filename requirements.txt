@@ -1,0 +1,2 @@
+Flask>=2.2
+oracledb>=1.4

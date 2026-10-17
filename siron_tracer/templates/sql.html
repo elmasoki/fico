@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import results_table %}
+{% block content %}
+<form method="post" class="card">
+  <h1>SQL çalıştır</h1>
+  <p class="small muted">Yalnızca SELECT / WITH. Şema: <b>{{ settings.current_schema }}</b>, salt-okunur, en fazla {{ settings.max_result_rows }} satır.</p>
+  <textarea class="sql" name="sql">{{ sql }}</textarea>
+  <button>Çalıştır</button>
+</form>
+{% if error %}<div class="card"><p class="err">{{ error }}</p></div>{% endif %}
+{% if result %}<div class="card">{{ results_table(result) }}</div>{% endif %}
+{% endblock %}

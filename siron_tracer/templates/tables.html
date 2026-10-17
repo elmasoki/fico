@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Tablo haritası</h1>
+<p class="small muted">Tamamlanmış ve gürültü olmayan tüm yakalamalarda hangi nesnenin hangi ekranda kullanıldığı.
+  <a href="{{ url_for('siron.tables_csv') }}">CSV indir</a></p>
+<table>
+  <tr><th>Nesne</th><th>Tip</th><th>İşlemler</th><th>Ekranlar (SQL sayısı / çalışma)</th></tr>
+  {% for label, e in usage %}
+  <tr><td><b>{{ label }}</b></td><td>{{ e.type or '' }}</td>
+    <td>{% for a in e.actions|sort %}<span class="badge">{{ a }}</span>{% endfor %}</td>
+    <td>{% for c, ns, ne in e.screens %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }} ({{ ns }}/{{ ne }})</a>{% endfor %}</td></tr>
+  {% else %}<tr><td colspan="4" class="muted">Henüz veri yok.</td></tr>{% endfor %}
+</table>
+{% endblock %}

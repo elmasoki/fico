@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_macros.html" import table_label %}
+{% block title %}{{ capture.name }} - Siron SQL Tracer{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{{ capture.name }} {% if capture.is_noise %}<span class="badge noise">gürültü</span>{% endif %}</h1>
+  <p class="small">DB saati {{ capture.start_local[:19] }} → {{ (capture.end_local or '')[:19] }}
+    · kaynak <b>{{ capture.source }}</b> · kullanıcı <b>{{ capture.db_user }}</b>
+    {% if capture.os_user %}· OS {{ capture.os_user }}{% endif %}{% if capture.host %}· host {{ capture.host }}{% endif %}
+    {% if capture.program %}· program {{ capture.program }}{% endif %}{% if capture.client_id %}· client {{ capture.client_id }}{% endif %}
+    <br>{{ record_count }} audit kaydı ·
+    {% for a, n in actions %}<span class="badge">{{ a }}: {{ n }}</span>{% endfor %}</p>
+  {% if capture.message %}<p class="warn">{{ capture.message }}</p>{% endif %}
+  {% if not has_objects %}<p class="small warn">Nesne kataloğu yüklü değil; tablo tespiti sezgisel yapılıyor.
+    Ana sayfadan "Kataloğu yenile" ile daha isabetli sonuç alırsınız.</p>{% endif %}
+  {% if not capture.is_noise %}
+  <p class="small">
+    {% if exclude_noise %}Gürültü yakalamalarındaki {{ noise_count }} SQL_ID gizleniyor.
+      <a href="?noise=0">Hepsini göster</a>
+    {% else %}Tüm SQL'ler gösteriliyor. <a href="?noise=1">Gürültüyü gizle</a>{% endif %}
+  </p>
+  {% endif %}
+  <form method="post" action="{{ url_for('siron.refetch_capture', capture_id=capture.id) }}" class="inline">
+    <button class="secondary" title="Audit kayıtları gecikmeli yazıldıysa">Yeniden çek</button></form>
+  <form method="post" action="{{ url_for('siron.update_capture', capture_id=capture.id) }}" class="inline">
+    <input type="hidden" name="toggle_noise" value="1">
+    <button class="secondary" title="Gürültü yakalamalarındaki SQL'ler diğer yakalamalarda gizlenir">
+      {{ 'Gürültü işaretini kaldır' if capture.is_noise else 'Gürültü olarak işaretle' }}</button></form>
+  <a class="btn secondary" href="{{ url_for('siron.capture_csv', capture_id=capture.id) }}">CSV indir</a>
+  <form method="post" action="{{ url_for('siron.delete_capture', capture_id=capture.id) }}" class="inline"
+        onsubmit="return confirm('Yakalama ve kayıtları silinsin mi?')"><button class="danger">Sil</button></form>
+  <details><summary class="small">Ad / not düzenle</summary>
+    <form method="post" action="{{ url_for('siron.update_capture', capture_id=capture.id) }}">
+      <div class="row"><div><label>Ad</label><input type="text" name="name" value="{{ capture.name }}"></div>
+      <div><label>Not</label><input type="text" name="notes" value="{{ capture.notes or '' }}"></div></div>
+      <button class="secondary">Kaydet</button>
+    </form></details>
+</div>
+
+<h2>Kullanılan tablolar / nesneler ({{ tables|length }})</h2>
+<table>
+  <tr><th>Nesne</th><th>Tip</th><th>İşlemler</th><th>SQL sayısı</th><th>Çalışma</th><th>SQL_ID'ler</th></tr>
+  {% for t in tables %}
+  <tr><td><b>{{ t.label }}</b></td><td>{{ t.obj_type or '' }}</td>
+    <td>{% for a in t.actions|sort %}<span class="badge">{{ a }}</span>{% endfor %}</td>
+    <td>{{ t.statements|length }}</td><td>{{ t.exec_count }}</td>
+    <td class="small">{% for s in t.statements %}<a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=s.sql_id) }}">{{ s.sql_id }}</a> {% endfor %}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted">Tablo bulunamadı.</td></tr>{% endfor %}
+</table>
+
+<h2>SQL'ler ({{ statements|length }})</h2>
+<div class="scroll">
+<table>
+  <tr><th>İlk görülme (UTC)</th><th>SQL_ID</th><th>İşlem</th><th>Çalışma</th><th>Farklı bind</th><th>Tablolar</th><th>SQL</th></tr>
+  {% for s in statements %}
+  <tr>
+    <td class="small">{{ s.first_ts[11:23] }}</td>
+    <td><a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=s.sql_id) }}"><code>{{ s.sql_id }}</code></a></td>
+    <td>{{ s.action or '' }}{% if s.failed %} <span class="badge err">{{ s.failed }} hata</span>{% endif %}</td>
+    <td>{{ s.exec_count }}</td><td>{{ s.bind_sets|length }}</td>
+    <td class="small">{% for t in s.tables %}<span class="badge">{{ table_label(t) }}</span>{% endfor %}</td>
+    <td class="sqlcell" title="{{ s.sql_text[:2000] }}">{{ s.sql_text }}</td>
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">SQL kaydı yok. Audit politikası açık mı, filtreler doğru mu? "Kurulum kontrolü" sayfasına bakın.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

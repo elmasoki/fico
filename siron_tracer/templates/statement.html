@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% from "_macros.html" import results_table, table_label %}
+{% block title %}{{ st.sql_id }} - Siron SQL Tracer{% endblock %}
+{% block content %}
+<p><a href="{{ url_for('siron.capture', capture_id=capture.id) }}">← {{ capture.name }}</a></p>
+<div class="card">
+  <h1>SQL_ID <code>{{ st.sql_id }}</code> <span class="badge">{{ st.action or '' }}</span></h1>
+  <p class="small">{{ st.exec_count }} çalışma · {{ st.bind_sets|length }} farklı bind seti ·
+    tablolar: {% for t in st.tables %}<span class="badge">{{ table_label(t) }}</span>{% endfor %}
+    · <a href="?rec={{ execution.record_id }}&cursor=1">Cursor cache (GV$SQL) bilgisini getir</a></p>
+  <h2>Orijinal SQL</h2>
+  <pre>{{ st.sql_text }}</pre>
+</div>
+
+{% if cursor or cursor_error %}
+<div class="card">
+  <h2>GV$SQL / GV$SQL_BIND_CAPTURE</h2>
+  {% if cursor_error %}<p class="err">{{ cursor_error }}</p>{% else %}
+    {% set cols, rows, binds = cursor %}
+    {% if not rows %}<p class="warn">Bu SQL_ID cursor cache'te yok (yaşlanıp çıkmış olabilir veya metin farklı).</p>{% endif %}
+    {{ results_table((cols, rows, False)) }}
+    {% if binds %}
+    <h2>Yakalanmış bindler</h2>
+    {{ results_table((['INST','CHILD','POS','AD','TİP','DEĞER','YAKALANMA'], binds, False)) }}
+    {% endif %}
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Çalışmalar / bind setleri</h2>
+  <div class="scroll" style="max-height:220px">
+  <table><tr><th></th><th>Zaman (UTC)</th><th>Session</th><th>Dönüş kodu</th><th>Bindler (audit ham değer)</th></tr>
+  {% for e in st.bind_sets %}
+    <tr {% if e.record_id == execution.record_id %}style="background:#eef4ff"{% endif %}>
+      <td><a href="?rec={{ e.record_id }}">seç</a></td><td class="small">{{ e.ts }}</td><td>{{ e.session_id or '' }}</td>
+      <td>{{ e.return_code or '' }}</td><td><code class="small">{{ e.sql_binds or '(bind yok)' }}</code></td></tr>
+  {% endfor %}
+  </table></div>
+</div>
+
+<form method="post" class="card">
+  <input type="hidden" name="rec" value="{{ execution.record_id }}">
+  <h2>Bind değerleri</h2>
+  {% if slots %}
+  <table>
+    <tr><th>Yer tutucu</th><th>Değer</th><th>Tip</th></tr>
+    {% for s in slots %}
+    <tr><td><code>{{ s.label }}</code>{% if s.occurrences|length > 1 %} <span class="small muted">({{ s.occurrences|length }} yerde)</span>{% endif %}
+          {% if s.missing %}<span class="badge err">audit'te yok</span>{% endif %}</td>
+      <td><input type="text" name="value_{{ loop.index0 }}" value="{{ s.value if s.value is not none else '' }}"></td>
+      <td><select name="kind_{{ loop.index0 }}">
+        {% for k, lbl in [('text','Metin (tırnaklı)'), ('number','Sayı (tırnaksız)'), ('raw','Ham ifade, örn. TO_DATE(...)'), ('null','NULL')] %}
+          <option value="{{ k }}" {% if s.kind == k %}selected{% endif %}>{{ lbl }}</option>{% endfor %}
+      </select></td></tr>
+    {% endfor %}
+  </table>
+  <button name="do" value="apply" class="secondary">Yerine koy</button>
+  {% else %}<p class="muted">Bu SQL'de bind değişkeni yok.</p>{% endif %}
+
+  <h2>Bindleri yerleştirilmiş SQL</h2>
+  {% if missing %}<p class="warn small">Bazı yer tutucuların değeri yok; çalıştırmadan önce doldurun.</p>{% endif %}
+  <textarea class="sql" name="sql_override">{{ literal }}</textarea>
+  <input type="hidden" name="literal_orig" value="{{ literal }}">
+  <p class="small muted">Bu alanı elle de düzenleyebilirsiniz. Sorgu, <b>{{ settings.current_schema }}</b> şemasında,
+    salt-okunur transaction içinde ve en fazla {{ settings.max_result_rows }} satır getirecek şekilde çalışır.</p>
+  <button name="do" value="run">Çalıştır</button>
+</form>
+
+{% if error %}<div class="card"><p class="err">{{ error }}</p></div>{% endif %}
+{% if result %}<div class="card"><h2>Sonuç</h2>{{ results_table(result) }}</div>{% endif %}
+{% endblock %}

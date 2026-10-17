@@ -1,0 +1,24 @@
+{% macro filter_fields(settings) %}
+<div class="row">
+  <div><label>Siron DB kullanıcısı</label><input type="text" name="db_user" value="{{ settings.siron_db_user }}"></div>
+  <div><label>OS kullanıcısı (opsiyonel, % kullanılabilir)</label><input type="text" name="os_user"></div>
+  <div><label>Makine / host (opsiyonel)</label><input type="text" name="host" placeholder="APPSRV01%"></div>
+</div>
+<div class="row">
+  <div><label>Program / module (opsiyonel)</label><input type="text" name="program" placeholder="JDBC%"></div>
+  <div><label>Client identifier (opsiyonel)</label><input type="text" name="client_id"></div>
+</div>
+{% endmacro %}
+
+{% macro results_table(result) %}
+{% set cols, rows, truncated = result %}
+<p class="muted small">{{ rows|length }} satır{% if truncated %} — <b class="warn">ilk {{ rows|length }} satır gösteriliyor</b>{% endif %}</p>
+<div class="scroll">
+<table>
+  <tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr>
+  {% for r in rows %}<tr>{% for v in r %}<td>{{ '' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}
+</table>
+</div>
+{% endmacro %}
+
+{% macro table_label(t) %}{% if t[0] %}{{ t[0] }}.{% endif %}{{ t[1] }}{% endmacro %}

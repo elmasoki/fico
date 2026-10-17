@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h1><span class="pulse"></span> Kayıt sürüyor: {{ capture.name }}</h1>
+  <p>Başlangıç (DB saati): <b>{{ capture.start_local[:19] }}</b> · kullanıcı <b>{{ capture.db_user }}</b>
+    {% if capture.os_user %}· OS {{ capture.os_user }}{% endif %}{% if capture.host %}· host {{ capture.host }}{% endif %}
+    {% if capture.program %}· program {{ capture.program }}{% endif %}</p>
+  <p>Şimdi Siron'da ekranı açın / işlemi yapın. Bitince durdurun.</p>
+  <form method="post" action="{{ url_for('siron.stop_capture', capture_id=capture.id) }}" class="inline">
+    <button class="big danger">Durdur ve kayıtları al</button></form>
+  <form method="post" action="{{ url_for('siron.delete_capture', capture_id=capture.id) }}" class="inline">
+    <button class="secondary">İptal et</button></form>
+</div>
+<div class="card">
+  <h2>Canlı önizleme <span class="muted small" id="status">yükleniyor…</span></h2>
+  <table id="live"><tr><th>Saat (UTC)</th><th>İşlem</th><th>SQL</th></tr></table>
+</div>
+<script>
+async function poll() {
+  try {
+    const r = await fetch("{{ url_for('siron.capture_live', capture_id=capture.id) }}");
+    const d = await r.json();
+    const st = document.getElementById("status");
+    if (d.error) { st.textContent = "hata: " + d.error; st.className = "err small"; }
+    else {
+      st.textContent = d.count + (d.capped ? "+" : "") + " audit kaydı";
+      st.className = "muted small";
+      const t = document.getElementById("live");
+      t.querySelectorAll("tr.d").forEach(e => e.remove());
+      d.last.forEach(x => {
+        const tr = t.insertRow(); tr.className = "d";
+        [x.ts, x.action || "", x.sql].forEach((v, i) => { const c = tr.insertCell(); c.textContent = v; if (i == 2) c.className = "sqlcell"; });
+      });
+    }
+  } catch (e) {}
+  setTimeout(poll, 5000);
+}
+poll();
+</script>
+{% endblock %}
