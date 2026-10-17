@@ -1,22 +1,22 @@
 {% extends "base.html" %}
-{% from "_macros.html" import results_table %}
+{% from "_macros.html" import icon, results_table, mask_select with context %}
+{% block page_title %}SQL konsolu{% endblock %}
+{% block subtitle %}<p class="sub">Yalnızca SELECT / WITH. Sorgular salt-okunur bir transaction içinde, seçilen şemada çalışır; tüm çalıştırmalar etkinlik günlüğüne yazılır.</p>{% endblock %}
 {% block content %}
 <form method="post" class="card">
-  <h1>SQL çalıştır</h1>
-  <p class="small muted">Yalnızca SELECT / WITH. Şema: <b>{{ settings.current_schema }}</b>, salt-okunur; ekranda en fazla {{ settings.max_result_rows }} satır.</p>
-  <textarea class="sql" name="sql">{{ sql }}</textarea>
-  <div class="toolbar">
-    <button name="do" value="run">Çalıştır</button>
-    <button name="do" value="csv" class="secondary">Tüm sonucu CSV indir</button>
-    <button name="do" value="html" class="secondary">Sonucu HTML indir</button>
-    <label style="margin:0 0 9px"><input type="checkbox" name="mask" value="1"> HTML'de veriyi maskele</label>
+  <div class="card-head"><h2>{{ icon('code') }}Sorgu</h2>
+    <div class="tools"><label class="small muted">Şema</label><select name="schema" style="width:180px">{% for s in schemas %}<option {% if s == schema %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div></div>
+  <div class="card-body"><textarea class="sql" name="sql" spellcheck="false" placeholder="SELECT * FROM customer WHERE ROWNUM <= 10">{{ sql }}</textarea></div>
+  <div class="card-foot">
+    <button name="do" value="run" class="btn-primary" data-busy="Çalışıyor">{{ icon('play') }}Çalıştır</button>
+    <span class="sep"></span>{{ mask_select() }}
+    <button name="do" value="csv" class="btn-secondary">{{ icon('download') }}Tümünü CSV</button>
+    <button name="do" value="html" class="btn-secondary">{{ icon('file') }}HTML</button>
+    <span class="spacer"></span>
+    <input type="text" name="title" value="Sorgu" style="width:220px" title="Rapor başlığı">
+    <button name="do" value="snapshot" class="btn-secondary">{{ icon('bookmark') }}Rapora ekle</button>
   </div>
-  <details style="margin-top:10px"><summary class="small">Rapora ekle</summary>
-    <div class="row"><div><label>Başlık</label><input type="text" name="title" value="Sorgu"></div>
-      <div><label>Not</label><input type="text" name="note"></div></div>
-    <button name="do" value="snapshot" class="secondary">Çalıştır ve sonucu rapora ekle</button>
-  </details>
 </form>
-{% if error %}<div class="card"><p class="err">{{ error }}</p></div>{% endif %}
-{% if result %}<div class="card">{{ results_table(result, sources) }}</div>{% endif %}
+{% if error %}<div class="callout err">{{ icon('alert') }}<div>{{ error }}</div></div>{% endif %}
+{% if result %}<div class="card"><div class="card-head"><h2>{{ icon('table') }}Sonuç</h2></div>{{ results_table(result, sources) }}</div>{% endif %}
 {% endblock %}

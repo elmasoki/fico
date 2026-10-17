@@ -45,6 +45,7 @@ CATALOG = {
                     ("SIRON", "ALERT_PK", "P", "ALERT", None, None)],
     "cons_columns": [("SIRON", "CUSTOMER_PK", "ID", 1), ("SIRON", "CUSTOMER_UK", "CUST_NO", 1),
                      ("SIRON", "ACCOUNT_PK", "ID", 1), ("SIRON", "ALERT_PK", "ALERT_ID", 1)],
+    "dependencies": [("SIRON", "PKG_RISK", "PACKAGE BODY", "SIRON", "ALERT", "TABLE")],
 }
 
 
@@ -62,14 +63,16 @@ class FakeOracle:
     def local_to_utc(self, local):
         return local - timedelta(hours=3)
 
-    def fetch_records(self, f, flush=False):
+    def fetch_records(self, f, flush=False, source=None):
+        self.last_filter = f
         return list(self.records)
 
     def load_catalog(self, schemas):
         return CATALOG
 
-    def run_select(self, sql, max_rows=None, binds=None, timeout_sec=None):
+    def run_select(self, sql, max_rows=None, binds=None, timeout_sec=None, schema=None):
         self.ran.append((sql, binds))
+        self.last_schema = schema
         for name in binds or {}:  # python-oracledb rejects binds that are not in the SQL (DPY-4008)
             assert re.search(r":%s\b" % name, sql), "bind :%s not in SQL" % name
         if binds and "CASE WHEN" in sql:  # table value search: one flag column per searched column
@@ -78,7 +81,7 @@ class FakeOracle:
             return ["F%d" % i for i in range(n)], [tuple(flags)], False
         return self.result
 
-    def stream_select(self, sql, max_rows, batch=2000):
+    def stream_select(self, sql, max_rows, batch=2000, schema=None):
         self.ran.append((sql, None))
         yield ["NAME", "IBAN"]
         yield [("Ali Veli", "TR01"), ("Ayşe", "TR02")]
@@ -89,7 +92,14 @@ class FakeOracle:
     def cursor_info(self, sql_id):
         return ["INST_ID"], [(1,)], []
 
-    def diagnostics(self):
+    def profile(self, key, table, sample_rows=200000, columns=None, progress=None):
+        if progress:
+            progress(0.5)
+        return {c.name: {"rows": 100, "non_null": 90, "nulls": 10, "fill_pct": 90.0, "distinct": 3,
+                         "min": "A", "max": "Z", "avg_len": 5, "max_len": 9, "top": [["Ali Veli", 40], ["X", 30]],
+                         "sampled": False, "sample_pct": None} for c in table.columns}
+
+    def diagnostics(self, users=None, schemas=None):
         return [("Bağlantı", True, "Oracle 19c")]
 
 
@@ -98,7 +108,7 @@ def env():
     settings = Settings(oracle_dsn="x", oracle_user="u", siron_db_user="SIRON",
                         siron_schemas=["SIRON"], secret_key="t")
     oracle = FakeOracle()
-    app = create_app(settings, oracle=oracle, store=Store(":memory:"))
+    app = create_app(settings, oracle=oracle, store=Store(":memory:"), sync_jobs=True)
     app.config["TESTING"] = True
     return app.test_client(), oracle, app.extensions["siron"]["store"]
 
@@ -229,9 +239,10 @@ def test_value_finder(env):
     html = client.post("/captures/%d/find" % cid, data={"value": "ali veli", "mode": "ci",
                                                          "strategy": "results"}).get_data(as_text=True)
     assert "SIRON.CUSTOMER.NAME" in html
-    html = client.post("/captures/%d/find" % cid, data={"value": "C-1", "mode": "exact",
-                                                         "strategy": "tables"}).get_data(as_text=True)
-    assert "SIRON.CUSTOMER.CUST_NO" in html and "SIRON.ALERT.CUST_NO" in html
+    html = client.post("/captures/%d/find" % cid, data={"value": "C-1", "mode": "exact", "strategy": "tables"},
+                       follow_redirects=True).get_data(as_text=True)
+    assert "SIRON.CUSTOMER.<b>CUST_NO</b>" in html and "SIRON.ALERT.<b>CUST_NO</b>" in html
+    assert store.list_jobs(1)[0]["status"] == "done"
 
 
 def test_builder_sql_exports_snapshots_reports(env):
@@ -247,9 +258,15 @@ def test_builder_sql_exports_snapshots_reports(env):
 
     r = client.post("/sql", data={"sql": "select * from customer", "do": "csv"})
     assert "Ayşe" in r.get_data(as_text=True) and r.headers["Content-Disposition"].startswith("attachment")
-    r = client.post("/sql", data={"sql": "select name, iban from customer", "do": "html", "mask": "1"})
+    r = client.post("/sql", data={"sql": "select name, iban from customer", "do": "html", "mask": "all"})
     body = r.get_data(as_text=True)
-    assert "<table>" in body and "Ali Veli" not in body and "Al" in body
+    assert "<table>" in body and "Ali Veli" not in body and "Al****li" in body
+    body = client.post("/sql", data={"sql": "select name, iban from customer", "do": "html",
+                                     "mask": "sensitive"}).get_data(as_text=True)
+    assert "Ali Veli" in body and "TR01" not in body          # IBAN is detected as sensitive
+    body = client.post("/sql", data={"sql": "select name, iban from customer", "do": "html",
+                                     "mask": "none"}).get_data(as_text=True)
+    assert "TR01" in body
 
     sid = compute_sql_id(Q1)
     client.post("/captures/%d/sql/%s" % (cid, sid), data={"do": "snapshot", "title": "Hesaplar"})
@@ -262,7 +279,7 @@ def test_builder_sql_exports_snapshots_reports(env):
     html = client.get("/report.html").get_data(as_text=True)
     for word in ("Siron AML veri eşleme raporu", "SIRON.CUSTOMER", "Kolon eşleme matrisi", "<svg", "Hesaplar", "Ali Veli"):
         assert word in html
-    html = client.get("/report.html?mask=1&capture=%d" % cid).get_data(as_text=True)
+    html = client.get("/report.html?mask=all&capture=%d" % cid).get_data(as_text=True)
     assert "Ekran raporu" in html and "Ali Veli" not in html
     r = client.get("/report.html?download=1")
     assert "attachment" in r.headers["Content-Disposition"]

@@ -34,9 +34,17 @@ class Settings:
     max_export_rows: int = 1000000     # full CSV export limit
     nls_date_format: Optional[str] = None
     nls_timestamp_format: Optional[str] = None
+    profile_sample_rows: int = 200000  # larger tables are profiled on a SAMPLE
+    extract_max_rows: int = 0          # 0 = no limit for migration extraction
+
+    # Privacy
+    mask_default: str = "sensitive"    # sensitive | all | none (exports and reports)
+    sensitive_pattern: Optional[str] = None  # regex for column names, default in privacy.py
 
     # App
     sqlite_path: str = "data/siron_tracer.db"
+    export_dir: str = "data/exports"
+    log_dir: str = "data/logs"
     secret_key: str = ""
     host: str = "127.0.0.1"
     port: int = 5000
@@ -74,6 +82,8 @@ def load_settings(path: Optional[str] = None) -> Settings:
     s.oracle_user = _get(cp, "oracle", "user", "ORACLE_USER", "")
     s.oracle_password = _get(cp, "oracle", "password", "ORACLE_PASSWORD", "")
     s.oracle_client_lib_dir = _get(cp, "oracle", "client_lib_dir", "ORACLE_CLIENT_LIB_DIR")
+    if not s.oracle_password and s.oracle_user:
+        s.oracle_password = keyring_password(s.oracle_user, s.oracle_dsn) or ""
 
     s.siron_db_user = _get(cp, "siron", "db_user", "SIRON_DB_USER", "SIRON").upper()
     schemas = _get(cp, "siron", "schemas", "SIRON_SCHEMAS", "") or ""
@@ -92,8 +102,35 @@ def load_settings(path: Optional[str] = None) -> Settings:
     s.flush_unified_on_stop = str(_get(cp, "app", "flush_unified_on_stop", "SIRON_FLUSH", "true")).lower() in ("1", "true", "yes", "evet")
     s.nls_date_format = _get(cp, "app", "nls_date_format", "SIRON_NLS_DATE_FORMAT")
     s.nls_timestamp_format = _get(cp, "app", "nls_timestamp_format", "SIRON_NLS_TIMESTAMP_FORMAT")
+    s.profile_sample_rows = int(_get(cp, "app", "profile_sample_rows", "SIRON_PROFILE_SAMPLE", 200000))
+    s.extract_max_rows = int(_get(cp, "app", "extract_max_rows", "SIRON_EXTRACT_MAX_ROWS", 0))
+    s.mask_default = (_get(cp, "privacy", "mask_default", "SIRON_MASK_DEFAULT", "sensitive") or "sensitive").lower()
+    s.sensitive_pattern = _get(cp, "privacy", "sensitive_pattern", "SIRON_SENSITIVE_PATTERN")
     s.sqlite_path = _get(cp, "app", "sqlite_path", "SIRON_SQLITE_PATH", "data/siron_tracer.db")
+    s.export_dir = _get(cp, "app", "export_dir", "SIRON_EXPORT_DIR", "data/exports")
+    s.log_dir = _get(cp, "app", "log_dir", "SIRON_LOG_DIR", "data/logs")
     s.secret_key = _get(cp, "app", "secret_key", "SIRON_SECRET_KEY", "") or secrets.token_hex(16)
     s.host = _get(cp, "app", "host", "SIRON_HOST", "127.0.0.1")
     s.port = int(_get(cp, "app", "port", "SIRON_PORT", 5000))
     return s
+
+
+KEYRING_SERVICE = "siron-tracer"
+
+
+def keyring_password(user: str, dsn: str) -> Optional[str]:
+    """Password stored with `python run.py --save-password` (Windows Credential Manager)."""
+    try:
+        import keyring
+        return keyring.get_password(KEYRING_SERVICE, "%s@%s" % (user, dsn))
+    except Exception:
+        return None
+
+
+def save_keyring_password(user: str, dsn: str, password: str) -> bool:
+    try:
+        import keyring
+        keyring.set_password(KEYRING_SERVICE, "%s@%s" % (user, dsn), password)
+        return True
+    except Exception:
+        return False

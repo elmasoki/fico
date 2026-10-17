@@ -1,32 +1,60 @@
 {% extends "base.html" %}
-{% from "_macros.html" import table_link, status_badge with context %}
+{% from "_macros.html" import icon, table_link, status_badge, empty with context %}
+{% block page_title %}Tablolar{% endblock %}
+{% block subtitle %}<p class="sub">Ekranlarda kullanılan (ya da şemadaki tüm) tablolar. Satırları seçip toplu karar verebilir veya profil çıkarabilirsiniz.</p>{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ url_for('siron.mapping_xlsx') }}">{{ icon('sheet') }}Excel'e aktar</a>{% endblock %}
 {% block content %}
-<h1>Tablolar</h1>
-<form class="card toolbar" method="get">
-  <div style="flex:2"><label>Ara (ad veya açıklama)</label><input type="text" name="q" value="{{ q }}"></div>
-  <div><label>Durum</label><select name="status"><option value="">Hepsi</option>
-    {% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
-    <option value="none" {% if status == 'none' %}selected{% endif %}>İşaretlenmemiş</option></select></div>
-  <div><label>Kapsam</label><select name="all"><option value="0">Ekranlarda kullanılanlar</option>
-    <option value="1" {% if show_all %}selected{% endif %} {% if not has_catalog %}disabled{% endif %}>Şemadaki tüm tablolar</option></select></div>
-  <button>Filtrele</button>
-</form>
-<p class="small muted">{{ rows|length }} tablo · {{ capture_count }} ekran yakalaması üzerinden.
-  "Kullanılan kolon": ekranların SQL'lerinde geçen kolon sayısı / tablodaki toplam kolon.</p>
-<div class="scroll">
-<table>
-  <tr><th>Tablo</th><th>Tip</th><th class="right">Satır</th><th>Açıklama</th><th>Ekranlar</th><th>İşlemler</th><th class="right">Kullanılan kolon</th><th class="right">İlişki</th><th>Durum</th><th>Not</th></tr>
-  {% for r in rows %}
-  <tr><td class="nowrap"><b>{{ table_link(r.key) }}</b></td>
-    <td class="small">{{ r.table.obj_type if r.table else '?' }}</td>
-    <td class="right small">{{ r.table.num_rows|thousands if r.table else '' }}</td>
-    <td class="small">{{ (r.table.comment or '')[:120] if r.table else '' }}</td>
-    <td class="small">{% for c, t in r.screens %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>{% endfor %}</td>
-    <td>{% for a in r.actions|sort %}<span class="badge">{{ a }}</span>{% endfor %}</td>
-    <td class="right">{{ r.used or '' }}{% if r.total %} / {{ r.total }}{% endif %}</td>
-    <td class="right">{{ r.relations or '' }}</td>
-    <td>{{ status_badge(r.ann.status) }}</td><td class="small">{{ r.ann.note or '' }}</td></tr>
-  {% else %}<tr><td colspan="10" class="muted">Tablo yok.</td></tr>{% endfor %}
-</table>
+<div class="card">
+  <form class="filters" method="get">
+    <div class="field grow"><label class="lbl">Ara</label><input type="search" name="q" value="{{ q }}" placeholder="Tablo adı veya açıklama"></div>
+    <div class="field"><label class="lbl">Durum</label><select name="status"><option value="">Hepsi</option>
+      {% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+      <option value="none" {% if status == 'none' %}selected{% endif %}>Karar yok</option></select></div>
+    <div class="field"><label class="lbl">Kapsam</label><select name="all"><option value="0">Ekranlarda kullanılanlar</option>
+      <option value="1" {% if show_all %}selected{% endif %} {% if not has_catalog %}disabled{% endif %}>Şemadaki tüm tablolar</option></select></div>
+    <button class="btn-secondary">{{ icon('filter') }}Uygula</button>
+    <span class="spacer"></span><span class="small muted">{{ rows|length }} tablo · {{ capture_count }} yakalama</span>
+  </form>
+  <form method="post" action="{{ url_for('siron.tables_bulk') }}" id="bulk">
+  <div class="filters" style="background:var(--surface)">
+    <span class="small muted" id="selcount">0 seçili</span>
+    <button name="action" value="migrate" class="btn-secondary btn-sm"><span class="dot st-migrate"></span>Taşınacak</button>
+    <button name="action" value="review" class="btn-secondary btn-sm"><span class="dot st-review"></span>İncelenecek</button>
+    <button name="action" value="ignore" class="btn-secondary btn-sm"><span class="dot st-ignore"></span>Gereksiz</button>
+    <button name="action" value="clear" class="btn-ghost btn-sm">Kararı temizle</button>
+    <span class="sep"></span>
+    <button name="action" value="profile" class="btn-secondary btn-sm" data-busy="Başlatılıyor">{{ icon('chart') }}Profil çıkar</button>
+  </div>
+  <div class="table-wrap tall">
+  <table>
+    <thead><tr><th class="tight"><input type="checkbox" id="all" title="Hepsini seç"></th><th>Tablo</th><th class="num">Satır</th><th>Ekranlar</th><th>İşlemler</th><th class="num">Kolon</th><th class="num">İlişki</th><th>Durum</th><th>Hedef / not</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><input type="checkbox" name="k" value="{{ r.key[0] ~ '.' if r.key[0] }}{{ r.key[1] }}"></td>
+      <td>{{ table_link(r.key, 'cell-title') }}
+        <span class="cell-sub">{{ r.table.obj_type if r.table else 'veri sözlüğünde yok' }}{% if r.indirect %} · dolaylı{% endif %}{% if 'batch' in r.kinds %} · batch{% endif %}{% if r.profiled %} · profilli{% endif %}{% if r.table and r.table.comment %} · {{ r.table.comment[:80] }}{% endif %}</span></td>
+      <td class="num small">{{ r.table.num_rows|thousands if r.table else '' }}</td>
+      <td class="small">{% for c, t in r.screens[:3] %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name[:28] }}</a>{% endfor %}{% if r.screens|length > 3 %}<span class="xs muted">+{{ r.screens|length - 3 }}</span>{% endif %}</td>
+      <td>{% for a in r.actions|sort %}<span class="badge">{{ a }}</span>{% endfor %}</td>
+      <td class="num small">{{ r.used or '' }}{% if r.total %}<span class="muted"> / {{ r.total }}</span>{% endif %}</td>
+      <td class="num">{{ r.relations or '' }}</td>
+      <td>{{ status_badge(r.ann.status) }}</td>
+      <td class="small">{% if r.ann.target %}<b>{{ r.ann.target }}</b> {% endif %}<span class="muted">{{ r.ann.note or '' }}</span></td></tr>
+    {% else %}<tr><td colspan="9">{{ empty('table', 'Tablo yok', '<span class="small">Ekran yakalayın veya kapsamı "Şemadaki tüm tablolar" yapın.</span>') }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
+  </form>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var boxes = document.querySelectorAll("#bulk input[name=k]"), all = document.getElementById("all"), cnt = document.getElementById("selcount");
+  function upd() { var n = [].filter.call(boxes, function (b) { return b.checked; }).length; cnt.textContent = n + " seçili"; }
+  boxes.forEach(function (b) { b.addEventListener("change", upd); });
+  all.addEventListener("change", function () { boxes.forEach(function (b) { b.checked = all.checked; }); upd(); });
+})();
+</script>
 {% endblock %}

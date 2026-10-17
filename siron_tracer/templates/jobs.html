@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty with context %}
+{% block page_title %}Arka plan işleri{% endblock %}
+{% block subtitle %}<p class="sub">Uzun süren işlemler (veri sözlüğü, ilişki doğrulama, değer arama, profil, veri çıkarma) arka planda çalışır; sayfadan ayrılabilirsiniz.</p>{% endblock %}
+{% block content %}
+<div class="card">
+  {% if jobs %}
+  <div class="table-wrap tall"><table>
+    <thead><tr><th>İş</th><th>Tür</th><th style="width:220px">İlerleme</th><th>Durum</th><th>Başlangıç</th><th>Bitiş</th></tr></thead><tbody>
+    {% for j in jobs %}
+    <tr><td><a class="cell-title" href="{{ url_for('siron.job', job_id=j.id) }}">{{ j.title }}</a><span class="cell-sub">{{ j.message or '' }}</span></td>
+      <td class="small">{{ JOB_KINDS.get(j.kind, j.kind) }}</td>
+      <td><div class="progress {{ 'indet' if j.status == 'running' and not j.progress }}"><i style="width:{{ j.progress }}%"></i></div></td>
+      <td>{% if j.status == 'running' %}<span class="badge info"><span class="spinner"></span>Çalışıyor %{{ j.progress }}</span>{% elif j.status == 'done' %}<span class="badge ok">Tamamlandı</span>{% elif j.status == 'failed' %}<span class="badge err">Hata</span>{% elif j.status == 'cancelled' %}<span class="badge">İptal</span>{% else %}<span class="badge">Sırada</span>{% endif %}</td>
+      <td class="small nowrap">{{ j.created_at|short_ts }}</td><td class="small nowrap">{{ (j.finished_at or '')|short_ts }}</td></tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}{{ empty('cpu', 'Henüz iş çalıştırılmadı') }}{% endif %}
+</div>
+{% endblock %}

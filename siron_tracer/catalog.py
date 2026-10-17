@@ -26,6 +26,11 @@ def type_family(data_type: Optional[str]) -> str:
     return "other"
 
 
+def ann(annotations: dict, key, column: str = "") -> dict:
+    """Annotation row of a table (column='') or column, {} when none."""
+    return annotations.get((key[0] or "", key[1], column), {})
+
+
 def label(key) -> str:
     """'OWNER.NAME' or 'OWNER.NAME.COLUMN' (owner omitted when unknown)."""
     parts = [p for p in key if p]
@@ -85,10 +90,33 @@ class Constraint:
     columns: Tuple[str, ...] = ()
 
 
+@dataclass
+class Dependency:
+    owner: str
+    name: str
+    obj_type: str
+    ref_owner: Optional[str]
+    ref_name: str
+    ref_type: Optional[str]
+
+
+TABLE_TYPES = ("TABLE", "VIEW", "MATERIALIZED VIEW")
+CODE_TYPES = ("PACKAGE", "PACKAGE BODY", "PROCEDURE", "FUNCTION", "TRIGGER", "TYPE", "TYPE BODY")
+
+
 class Catalog:
     def __init__(self, tables: List[Table], objects: Dict[ObjectKey, str],
-                 constraints: List[Constraint], version: str = ""):
+                 constraints: List[Constraint], version: str = "",
+                 dependencies: Optional[List[Dependency]] = None):
         self.version = version
+        self._deps: Dict[ObjectKey, Set[Tuple[ObjectKey, str]]] = {}
+        self._rdeps: Dict[ObjectKey, Set[Tuple[ObjectKey, str]]] = {}
+        for d in dependencies or []:
+            src, dst = (d.owner, d.name), (d.ref_owner, d.ref_name)  # PACKAGE BODY folds into PACKAGE
+            if src == dst:
+                continue
+            self._deps.setdefault(src, set()).add((dst, d.ref_type or ""))
+            self._rdeps.setdefault(dst, set()).add((src, d.obj_type or ""))
         self.tables: Dict[ObjectKey, Table] = {t.key: t for t in tables}
         self.objects: Dict[ObjectKey, str] = dict(objects)
         for t in tables:
@@ -163,3 +191,35 @@ class Catalog:
 
     def fk_columns(self, key: ObjectKey) -> Set[str]:
         return {col for child, cols, _, _, _ in self.foreign_keys() if child == key for col in cols}
+
+    # ------------------------------------------------------------------ dependencies
+    @property
+    def has_dependencies(self) -> bool:
+        return bool(self._deps)
+
+    def depends_on(self, key: ObjectKey) -> List[Tuple[ObjectKey, str]]:
+        """Direct references of an object: [(key, type)]"""
+        return sorted(self._deps.get(key, ()), key=lambda x: (x[1], x[0][1]))
+
+    def used_by(self, key: ObjectKey) -> List[Tuple[ObjectKey, str]]:
+        """Objects (packages, views, triggers...) that reference `key`."""
+        return sorted(self._rdeps.get(key, ()), key=lambda x: (x[1], x[0][1]))
+
+    def underlying_tables(self, key: ObjectKey, max_depth: int = 4) -> List[ObjectKey]:
+        """Tables reached from a package / procedure / view through its dependencies."""
+        seen, out, frontier = {key}, [], [key]
+        for _ in range(max_depth):
+            nxt = []
+            for k in frontier:
+                for dst, dtype in self._deps.get(k, ()):
+                    if dst in seen:
+                        continue
+                    seen.add(dst)
+                    if dtype == "TABLE" or (dtype == "" and dst in self.tables):
+                        out.append(dst)
+                    elif dtype in ("VIEW", "MATERIALIZED VIEW", "SYNONYM") or dtype in CODE_TYPES:
+                        if dtype in ("VIEW", "MATERIALIZED VIEW"):
+                            out.append(dst)
+                        nxt.append(dst)
+            frontier = nxt
+        return out

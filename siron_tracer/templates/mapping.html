@@ -1,28 +1,36 @@
 {% extends "base.html" %}
-{% from "_macros.html" import table_link, usage_badges, status_badge with context %}
+{% from "_macros.html" import icon, table_link, usage_badges, status_badge, pii, empty with context %}
+{% block page_title %}Kolon eşleme{% endblock %}
+{% block subtitle %}<p class="sub">Göç için veri eşleme matrisi: ekranlarda kullanılan ve not alınan tüm kolonlar. Kararları tablo sayfasında ya da Excel üzerinden toplu girebilirsiniz.</p>{% endblock %}
+{% block actions %}
+  <a class="btn btn-secondary" href="{{ url_for('siron.mapping_csv') }}">{{ icon('download') }}CSV</a>
+  <a class="btn btn-primary" href="{{ url_for('siron.mapping_xlsx') }}">{{ icon('sheet') }}Excel'e aktar</a>
+{% endblock %}
 {% block content %}
-<h1>Kolon eşleme</h1>
-<p class="hint">Ekranlarda kullanılan (ve not eklenmiş) tüm kolonlar: göç için veri eşleme matrisi. Durum, hedef alan ve notları
-  tablo sayfasından düzenleyebilirsiniz. Satır rengi yok = henüz karar verilmemiş.</p>
-<form class="toolbar" method="get" style="margin-bottom:10px">
-  <div><label>Durum</label><select name="status" onchange="this.form.submit()"><option value="">Hepsi</option>
-    {% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
-  <a class="btn secondary" href="{{ url_for('siron.mapping_csv') }}">CSV indir (Excel)</a>
-  <span class="small muted" style="margin-bottom:9px">{{ rows|length }} kolon</span>
-</form>
-<div class="scroll">
-<table>
-  <tr><th>Tablo</th><th>Kolon</th><th>Tip</th><th>DB açıklaması</th><th>Kullanım</th><th>Ekranlar</th><th>Durum</th><th>Hedef alan</th><th>Not</th></tr>
-  {% for r in rows %}
-  {% set st = r.ann.status or r.table_ann.status %}
-  <tr><td class="nowrap">{{ table_link(r.col[:2]) }}</td>
-    <td class="mono"><a href="{{ url_for('siron.table', owner=r.col[0] or '-', name=r.col[1]) }}#col-{{ r.col[2] }}"><b>{{ r.col[2] }}</b></a></td>
-    <td class="small nowrap">{{ r.info.type_label if r.info else '' }}</td><td class="small">{{ r.info.comment if r.info and r.info.comment else '' }}</td>
-    <td>{{ usage_badges(r.kinds) }}</td>
-    <td class="small">{% for c in r.screens %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}</td>
-    <td>{{ status_badge(st) }}{% if not r.ann.status and r.table_ann.status %}<span class="small muted"> (tablo)</span>{% endif %}</td>
-    <td class="small"><b>{{ r.ann.target or '' }}</b></td><td class="small">{{ r.ann.note or '' }}</td></tr>
-  {% else %}<tr><td colspan="9" class="muted">Henüz kolon yok. Veri sözlüğünü yükleyip ekran yakalayın.</td></tr>{% endfor %}
-</table>
+<div class="card">
+  <form class="filters" method="get">
+    <div class="field grow"><label class="lbl">Ara</label><input type="search" name="q" value="{{ q }}" placeholder="TABLO.KOLON veya hedef alan"></div>
+    <div class="field"><label class="lbl">Durum</label><select name="status"><option value="">Hepsi</option>{% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}<option value="none" {% if status == 'none' %}selected{% endif %}>Karar yok</option></select></div>
+    <label class="check" style="margin-bottom:8px"><input type="checkbox" name="sensitive" value="1" {% if request.args.get('sensitive') %}checked{% endif %}><span>Yalnız hassas</span></label>
+    <button class="btn-secondary">{{ icon('filter') }}Uygula</button>
+    <span class="spacer"></span><span class="small muted">{{ rows|length }} kolon</span>
+  </form>
+  <div class="table-wrap tall">
+  <table>
+    <thead><tr><th>Tablo</th><th>Kolon</th><th>Tip</th><th>Kullanım</th><th class="num">Doluluk</th><th>Ekranlar</th><th>Durum</th><th>Hedef alan</th><th>Not</th></tr></thead>
+    <tbody>
+    {% for r in rows %}{% set st = r.ann.status or r.table_ann.status %}
+    <tr><td class="nowrap small">{{ table_link(r.col[:2]) }}</td>
+      <td class="nowrap"><a class="mono" href="{{ url_for('siron.table', owner=r.col[0] or '-', name=r.col[1]) }}#col-{{ r.col[2] }}"><b>{{ r.col[2] }}</b></a> {{ pii(r.sensitive) }}
+        {% if r.info and r.info.comment %}<span class="cell-sub">{{ r.info.comment }}</span>{% endif %}</td>
+      <td class="small nowrap">{{ r.info.type_label if r.info else '' }}</td><td>{{ usage_badges(r.kinds) }}</td>
+      <td class="num small">{{ (r.profile.fill_pct ~ '%') if r.profile and r.profile.fill_pct is not none else '' }}</td>
+      <td class="small">{% for c in r.screens[:2] %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}{% if r.screens|length > 2 %} <span class="muted">+{{ r.screens|length - 2 }}</span>{% endif %}</td>
+      <td class="nowrap">{{ status_badge(st, not r.ann.status and r.table_ann.status) }}</td>
+      <td class="small"><b>{{ r.ann.target or '' }}</b></td><td class="small">{{ r.ann.note or '' }}</td></tr>
+    {% else %}<tr><td colspan="9">{{ empty('columns', 'Kolon yok', '<span class="small">Veri sözlüğünü yükleyip ekran yakalayın.</span>') }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
 </div>
 {% endblock %}

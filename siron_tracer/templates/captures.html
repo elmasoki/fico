@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, capture_form, empty with context %}
+{% block page_title %}Yakalamalar{% endblock %}
+{% block subtitle %}<p class="sub">Her yakalama, seçtiğiniz DB kullanıcılarının bir zaman aralığında çalıştırdığı tüm SQL'lerdir. Bir ekranı açmadan önce başlatın, işlem bitince durdurun.</p>{% endblock %}
+{% block content %}
+{% if recording %}<div class="callout err">{{ icon('record') }}<div><b>Kayıt sürüyor:</b> {% for c in recording %}<a href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a> {% endfor %}</div></div>{% endif %}
+<div class="grid g-main">
+  <div class="card">
+    <div class="card-head">
+      <h2>{{ icon('layers') }}Tüm yakalamalar</h2><span class="meta">{{ captures|length }}</span>
+      <div class="tools">
+        <div class="segmented">
+          {% for k, v in [('', 'Hepsi'), ('screen', 'Ekran'), ('batch', 'Batch'), ('noise', 'Gürültü')] %}
+          <label onclick="location.href='{{ url_for('siron.captures', kind=k) if k else url_for('siron.captures') }}'"><input type="radio" name="kf" {% if kind == k %}checked{% endif %}><span>{{ v }}</span></label>{% endfor %}
+        </div>
+      </div>
+    </div>
+    {% if captures %}
+    <div class="table-wrap tall">
+    <table>
+      <thead><tr><th>Ekran / işlem</th><th>Durum</th><th>Zaman (DB)</th><th>Kullanıcı / şema</th><th class="num">Kayıt</th></tr></thead>
+      <tbody>
+      {% for c in captures %}
+      <tr>
+        <td><a class="cell-title" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>
+          <span class="cell-sub">{% if c.screen_id and screens_by_id.get(c.screen_id) %}{{ icon('list') }} {{ screens_by_id[c.screen_id].module or '' }}{% endif %}{% if c.notes %} {{ c.notes }}{% endif %}</span></td>
+        <td class="nowrap">{% if c.status == 'recording' %}<span class="badge rec"><span class="dot"></span>Kayıtta</span>{% else %}<span class="badge ok">Tamam</span>{% endif %}
+          {% if c.is_noise %}<span class="badge">Gürültü</span>{% elif c.kind == 'batch' %}<span class="badge info">Batch</span>{% endif %}</td>
+        <td class="nowrap small">{{ c.start_local[:16] }}<span class="cell-sub">→ {{ (c.end_local or '')[11:16] or 'devam ediyor' }}</span></td>
+        <td class="small">{{ c.db_users|join(', ') }}<span class="cell-sub">{{ c.schema_name or settings.current_schema }} · {{ c.source }}</span></td>
+        <td class="num">{{ c.record_count|thousands }}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}{{ empty('record', 'Yakalama yok', '<span class="small">Sağdaki formla ilk ekranınızı yakalayın.</span>') }}{% endif %}
+  </div>
+
+  <div id="new">
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('plus') }}Yeni yakalama</h2></div>
+      <div class="card-body">
+        <div class="tabs" style="margin-top:-8px">
+          <a href="#" class="on" data-pane="live">{{ icon('record') }}Şimdi başlat</a>
+          <a href="#" data-pane="range">{{ icon('calendar') }}Geçmiş aralık / batch</a>
+        </div>
+        <form method="post" action="{{ url_for('siron.start_capture') }}" data-pane-id="live">
+          {{ capture_form(users, schemas, screens, 'live') }}
+          <button class="btn-rec btn-lg btn-block mt8" data-busy="Başlatılıyor">{{ icon('record') }}Kaydı başlat</button>
+          <p class="xs muted mt8 mb0">Başlangıç zamanı veritabanı saatinden alınır. Sonra Siron'da ekranı açıp işlemi yapın.</p>
+        </form>
+        <form method="post" action="{{ url_for('siron.capture_from_range') }}" data-pane-id="range" class="hidden">
+          <div class="row">
+            <div class="field"><label>Başlangıç (DB saati)</label><input type="datetime-local" step="1" name="start" required></div>
+            <div class="field"><label>Bitiş</label><input type="datetime-local" step="1" name="end" required></div>
+          </div>
+          {{ capture_form(users, schemas, screens, 'batch') }}
+          <button class="btn-primary btn-block mt8" data-busy="Kayıtlar alınıyor">{{ icon('download') }}Kayıtları getir</button>
+          <p class="xs muted mt8 mb0">Gece çalışan işler (senaryo, skorlama) için batch türünü seçin; bu tablolar kapsam ekranında ayrı izlenir.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll("[data-pane]").forEach(function (a) {
+  a.addEventListener("click", function (e) {
+    e.preventDefault();
+    document.querySelectorAll("[data-pane]").forEach(function (x) { x.classList.toggle("on", x === a); });
+    document.querySelectorAll("[data-pane-id]").forEach(function (f) { f.classList.toggle("hidden", f.dataset.paneId !== a.dataset.pane); });
+  });
+});
+</script>
+{% endblock %}

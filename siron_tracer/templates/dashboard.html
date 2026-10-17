@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, kpi, decision_bar, empty, table_link with context %}
+{% block page_title %}Genel bakış{% endblock %}
+{% block subtitle %}<p class="sub">Siron AML'den yeni sisteme geçiş için keşif ve veri eşleme durumu. Ekranları yakalayın, tablo ve kolonlara karar verin, ilişkileri doğrulayın, veriyi çekin.</p>{% endblock %}
+{% block actions %}
+  <a class="btn btn-secondary" href="{{ url_for('siron.report', download=0) }}" target="_blank">{{ icon('file') }}Proje raporu</a>
+  <a class="btn btn-primary" href="{{ url_for('siron.captures') }}#new">{{ icon('record') }}Yeni yakalama</a>
+{% endblock %}
+{% block content %}
+{% if recording %}<div class="callout err">{{ icon('record') }}<div><b>Kayıt sürüyor:</b> {% for c in recording %}<a href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>{{ ', ' if not loop.last }}{% endfor %} — Siron'da işleminizi bitirince durdurmayı unutmayın.</div></div>{% endif %}
+{% if not catalog %}
+<div class="callout warn">{{ icon('db') }}<div style="flex:1"><b>Veri sözlüğü yüklenmedi.</b> Kolon analizi, ilişki tahmini, profil ve sorgu oluşturucu için Siron şemalarının sözlüğünü bir kez yükleyin
+  ({{ settings.schemas|join(', ') }}).</div>
+  <form method="post" action="{{ url_for('siron.refresh_catalog') }}"><button class="btn-primary btn-sm" data-busy="Başlatılıyor">{{ icon('download') }}Şimdi yükle</button></form></div>
+{% endif %}
+
+<div class="grid g4">
+  {% if cov.screens_total %}
+    {{ kpi('list', 'Ekran kapsamı', cov.screens_pct|pct, '<b>%d</b> / %d ekran yakalandı'|format(cov.screens_captured, cov.screens_total - cov.screens_by_status.get('skip', 0)), cov.screens_pct or 0) }}
+  {% else %}
+    {{ kpi('record', 'Ekran yakalaması', capture_count, '<a href="' ~ url_for('siron.inventory') ~ '">Ekran envanteri</a> ekleyerek kapsamı ölçün') }}
+  {% endif %}
+  {{ kpi('table', 'Dokunulan tablolar', cov.tables_touched|thousands, ('<b>' ~ cov.tables_pct|pct ~ '</b> · şemadaki ' ~ (cov.tables_total|thousands) ~ ' tablodan') if cov.tables_total else 'veri sözlüğü yüklenince oran görünür', cov.tables_pct) }}
+  {{ kpi('columns', 'Kolon kararları', cov.columns_pct|pct, '<b>%d</b> / %d kullanılan kolona karar verildi'|format(cov.columns_decided, cov.columns_used), cov.columns_pct or 0) }}
+  {{ kpi('shield', 'İlişki doğrulama', cov.relations_pct|pct if cov.relations_inferred else '—', '<b>%d</b> / %d çıkarımsal ilişki veriyle doğrulandı'|format(cov.relations_verified, cov.relations_inferred), cov.relations_pct or 0) }}
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <div class="card-head"><h2>{{ icon('table') }}Tablo kararları</h2><span class="meta">dokunulan ve not alınan tablolar</span>
+      <div class="tools"><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.tables') }}">Tablolar{{ icon('chev') }}</a></div></div>
+    <div class="card-body">{% set tt = cov.tables_by_status.values()|sum %}
+      {% if tt %}{{ decision_bar(cov.tables_by_status, tt, 'tablo') }}{% else %}<p class="muted small mb0">Henüz tablo yok — bir ekran yakalayın.</p>{% endif %}</div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>{{ icon('columns') }}Kolon kararları</h2><span class="meta">ekranlarda kullanılan kolonlar</span>
+      <div class="tools"><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.mapping') }}">Kolon eşleme{{ icon('chev') }}</a></div></div>
+    <div class="card-body">{% if cov.columns_used %}{{ decision_bar(cov.columns_by_status, cov.columns_used, 'kolon') }}
+      <p class="small muted mb0 mt8"><b class="ink2">{{ cov.columns_targeted }}</b> kolon için hedef alan girildi.</p>{% else %}<p class="muted small mb0">Kolon tespiti için ekran yakalayın ve veri sözlüğünü yükleyin.</p>{% endif %}</div>
+  </div>
+</div>
+
+<div class="grid g-main">
+  <div class="card">
+    <div class="card-head"><h2>{{ icon('record') }}Son yakalamalar</h2><div class="tools"><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.captures') }}">Tümü{{ icon('chev') }}</a></div></div>
+    {% if captures %}
+    <ul class="list">
+      {% for c in captures %}
+      <li><span class="avatar {{ 'red' if c.status == 'recording' else 'gray' if c.is_noise else '' }}">{{ icon('record' if c.status == 'recording' else 'clock' if c.kind == 'batch' else 'layers') }}</span>
+        <span class="grow"><a class="t" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>
+          <span class="s">{{ c.start_local|short_ts }} · {{ c.db_users|join(', ') }}{% if c.schema_name %} · şema {{ c.schema_name }}{% endif %} · {{ c.record_count|thousands }} kayıt</span></span>
+        {% if c.status == 'recording' %}<span class="badge rec"><span class="dot"></span>kayıtta</span>{% elif c.is_noise %}<span class="badge">gürültü</span>{% elif c.kind == 'batch' %}<span class="badge info">batch</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}{{ empty('record', 'Henüz yakalama yok', '<a class="btn btn-primary btn-sm mt8" href="' ~ url_for('siron.captures') ~ '">İlk ekranı yakalayın</a>') }}{% endif %}
+  </div>
+  <div class="stack">
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('zap') }}Sıradaki işler</h2></div>
+      <ul class="list">
+        {% if not catalog %}<li><span class="avatar">{{ icon('db') }}</span><span class="grow"><span class="t">Veri sözlüğünü yükleyin</span><span class="s">Kolon ve ilişki analizinin ön koşulu</span></span></li>{% endif %}
+        {% if cov.screens_by_status.get('todo') %}<li><span class="avatar">{{ icon('list') }}</span><span class="grow"><a class="t" href="{{ url_for('siron.inventory') }}">{{ cov.screens_by_status.get('todo') }} ekran yakalanmadı</a><span class="s">Ekran envanteri</span></span></li>{% endif %}
+        {% if cov.undecided_columns %}<li><span class="avatar">{{ icon('columns') }}</span><span class="grow"><a class="t" href="{{ url_for('siron.mapping', status='none') }}">{{ cov.undecided_columns|length }} kolon karar bekliyor</a><span class="s">Taşınacak / İncelenecek / Gereksiz</span></span></li>{% endif %}
+        {% if cov.unverified %}<li><span class="avatar">{{ icon('shield') }}</span><span class="grow"><a class="t" href="{{ url_for('siron.relations', state='unverified') }}">{{ cov.unverified|length }} ilişki doğrulanmadı</a><span class="s">Tek tıkla veriyle doğrulayın</span></span></li>{% endif %}
+        {% set big = cov.untouched|selectattr('table.num_rows')|list %}
+        {% if big %}<li><span class="avatar">{{ icon('alert') }}</span><span class="grow"><a class="t" href="{{ url_for('siron.coverage') }}">{{ big|length }} dolu tablo hiçbir ekranda görünmedi</a><span class="s">Batch tabloları veya atlanan ekranlar olabilir</span></span></li>{% endif %}
+        {% if cov.tables_batch_only %}<li><span class="avatar">{{ icon('clock') }}</span><span class="grow"><span class="t">{{ cov.tables_batch_only|length }} tablo yalnız batch'te</span><span class="s">Ekranlarda görünmüyor</span></span></li>{% endif %}
+        {% if catalog and not cov.undecided_columns and not cov.unverified and captures %}<li><span class="avatar">{{ icon('check') }}</span><span class="grow"><span class="t">Açık iş yok</span><span class="s">Taşıma paketine geçebilirsiniz</span></span></li>{% endif %}
+      </ul>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('cpu') }}Arka plan işleri</h2><div class="tools"><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.jobs') }}">Tümü{{ icon('chev') }}</a></div></div>
+      {% if jobs %}<ul class="list">{% for j in jobs[:5] %}
+        <li><span class="grow"><a class="t" href="{{ url_for('siron.job', job_id=j.id) }}">{{ j.title }}</a><span class="s">{{ j.created_at|short_ts }} · {{ j.message or '' }}</span></span>
+          {% if j.status == 'running' %}<span class="badge info"><span class="spinner"></span>%{{ j.progress }}</span>{% elif j.status == 'done' %}<span class="badge ok">bitti</span>{% elif j.status == 'failed' %}<span class="badge err">hata</span>{% else %}<span class="badge">{{ j.status }}</span>{% endif %}</li>{% endfor %}</ul>
+      {% else %}<p class="muted small p16 mb0">Henüz iş çalıştırılmadı.</p>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if cov.modules %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('chart') }}Modül bazında ekran kapsamı</h2><span class="meta">yakalanan / toplam ekran</span></div>
+  <div class="card-body bars">
+    {% for m in cov.modules %}{% set p = (100 * m.captured / m.total) if m.total else 0 %}
+    <div class="bar-row" data-tip="{{ m.module }}: {{ m.captured }} / {{ m.total }} ekran"><span class="name">{{ m.module }}</span>
+      <span class="track"><span class="fill" style="display:block;width:{{ p }}%"></span></span><span class="val">{{ m.captured }}/{{ m.total }}</span></div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<div class="grid g4">
+  <div class="card kpi"><div class="k-label">{{ icon('db') }}Veri sözlüğü</div><div class="k-value" style="font-size:20px">{{ (catalog.tables|length)|thousands if catalog else '—' }}<small>tablo/view</small></div>
+    <div class="k-sub">{{ ('Son yükleme ' ~ (catalog_version|short_ts)) if catalog else 'Yüklenmedi' }}</div>
+    <form method="post" action="{{ url_for('siron.refresh_catalog') }}" class="mt8"><button class="btn-secondary btn-sm" data-busy="Başlatılıyor">{{ icon('refresh') }}Yenile</button></form></div>
+  <div class="card kpi"><div class="k-label">{{ icon('link') }}İlişkiler</div><div class="k-value" style="font-size:20px">{{ relation_count }}</div><div class="k-sub">constraint + SQL join + tahmin</div></div>
+  <div class="card kpi"><div class="k-label">{{ icon('layers') }}Dolaylı tablolar</div><div class="k-value" style="font-size:20px">{{ cov.tables_indirect }}</div><div class="k-sub">yalnız paket/view üzerinden erişilen</div></div>
+  <div class="card kpi"><div class="k-label">{{ icon('bookmark') }}Kayıtlı sonuçlar</div><div class="k-value" style="font-size:20px">{{ snapshot_count }}</div><div class="k-sub"><a href="{{ url_for('siron.snapshots') }}">raporlara eklenen sorgu sonuçları</a></div></div>
+</div>
+{% endblock %}

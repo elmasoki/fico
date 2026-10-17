@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, kpi, decision_bar, table_link, status_badge, empty with context %}
+{% block page_title %}Kapsam{% endblock %}
+{% block subtitle %}<p class="sub">Keşfin ne kadar tamamlandığı ve hâlâ açık olanlar: yakalanmayan ekranlar, hiç görünmeyen tablolar, karar bekleyen kolonlar, doğrulanmamış ilişkiler.</p>{% endblock %}
+{% block content %}
+<div class="grid g4">
+  {{ kpi('list', 'Ekran kapsamı', cov.screens_pct|pct, '<b>%d</b> / %d ekran'|format(cov.screens_captured, cov.screens_total - cov.screens_by_status.get('skip', 0)), cov.screens_pct or 0) }}
+  {{ kpi('table', 'Tablo kapsamı', cov.tables_pct|pct, '<b>%d</b> / %d şema tablosu'|format(cov.tables_touched, cov.tables_total), cov.tables_pct) }}
+  {{ kpi('columns', 'Kolon kararları', cov.columns_pct|pct, '<b>%d</b> / %d kolon'|format(cov.columns_decided, cov.columns_used), cov.columns_pct or 0) }}
+  {{ kpi('shield', 'İlişki doğrulama', cov.relations_pct|pct if cov.relations_inferred else '—', '<b>%d</b> / %d ilişki'|format(cov.relations_verified, cov.relations_inferred), cov.relations_pct or 0) }}
+</div>
+<div class="grid g2">
+  <div class="card"><div class="card-head"><h2>{{ icon('list') }}Ekran durumları</h2></div><div class="card-body">
+    {% if cov.screens_total %}<div class="bars">{% for k, v in SCREEN_STATUSES.items() %}{% set n = cov.screens_by_status.get(k, 0) %}
+      <div class="bar-row" data-tip="{{ v }}: {{ n }}"><span class="name">{{ v }}</span><span class="track"><span class="fill" style="display:block;width:{{ 100 * n / cov.screens_total }}%"></span></span><span class="val">{{ n }}</span></div>{% endfor %}</div>
+    {% else %}<p class="muted small mb0">Envanter boş. <a href="{{ url_for('siron.inventory') }}">Ekran envanteri</a> oluşturun.</p>{% endif %}</div></div>
+  <div class="card"><div class="card-head"><h2>{{ icon('table') }}Tablo kararları</h2></div><div class="card-body">{% set tt = cov.tables_by_status.values()|sum %}
+    {% if tt %}{{ decision_bar(cov.tables_by_status, tt, 'tablo') }}{% else %}<p class="muted small mb0">Henüz yok.</p>{% endif %}
+    <p class="small muted mb0 mt16">{{ cov.tables_indirect }} tablo yalnız paket/view üzerinden, {{ cov.tables_batch_only|length }} tablo yalnız batch yakalamalarında görüldü.</p></div></div>
+</div>
+{% if cov.tables_batch_only %}
+<div class="card"><div class="card-head"><h2>{{ icon('clock') }}Yalnız batch'te görülen tablolar</h2><span class="meta">{{ cov.tables_batch_only|length }}</span></div>
+  <div class="card-body">{% for k in cov.tables_batch_only %}{{ table_link(k, 'badge') }}{% endfor %}</div></div>
+{% endif %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('alert') }}Hiçbir yakalamada görünmeyen tablolar</h2><span class="meta">{{ untouched_total }}{% if untouched_total > untouched|length %} (ilk {{ untouched|length }}){% endif %}</span>
+    <div class="tools"><form method="get" class="flex"><label class="small muted">En az satır</label><select name="min_rows" onchange="this.form.submit()" style="width:120px">{% for v in [0, 1, 100, 10000, 1000000] %}<option value="{{ v }}" {% if min_rows == v %}selected{% endif %}>{{ v|thousands }}</option>{% endfor %}</select></form></div></div>
+  {% if not has_catalog %}<div class="card-body"><div class="callout warn mb0">{{ icon('db') }}<div>Veri sözlüğü yüklenince listelenir.</div></div></div>
+  {% elif untouched %}
+  <form method="post" action="{{ url_for('siron.tables_bulk') }}">
+  <div class="filters" style="background:var(--surface)"><span class="small muted">Seçilenleri işaretle:</span>
+    <button name="action" value="review" class="btn-secondary btn-sm"><span class="dot st-review"></span>İncelenecek</button>
+    <button name="action" value="ignore" class="btn-secondary btn-sm"><span class="dot st-ignore"></span>Gereksiz</button>
+    <button name="action" value="profile" class="btn-secondary btn-sm">{{ icon('chart') }}Profil çıkar</button></div>
+  <div class="table-wrap tall"><table>
+    <thead><tr><th class="tight"></th><th>Tablo</th><th class="num">Satır</th><th>Açıklama</th><th>Durum</th></tr></thead><tbody>
+    {% for u in untouched %}<tr><td><input type="checkbox" name="k" value="{{ u.key[0] }}.{{ u.key[1] }}"></td><td>{{ table_link(u.key, 'cell-title') }}</td>
+      <td class="num">{{ u.table.num_rows|thousands }}</td><td class="small">{{ u.table.comment or '' }}</td><td>{{ status_badge(u.ann.status) }}</td></tr>{% endfor %}</tbody></table></div>
+  </form>
+  {% else %}{{ empty('check', 'Tüm dolu tablolar en az bir yakalamada görüldü') }}{% endif %}
+</div>
+{% endblock %}

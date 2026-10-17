@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty with context %}
+{% block page_title %}{{ job.title }}{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.jobs') }}">Arka plan işleri</a>{{ icon('chev') }}<b>#{{ job.id }}</b>{% endblock %}
+{% block eyebrow %}<div class="eyebrow">{{ icon('cpu') }}{{ JOB_KINDS.get(job.kind, job.kind) }}</div>{% endblock %}
+{% block actions %}{% if job.status in ('queued', 'running') %}<form method="post" action="{{ url_for('siron.job_cancel', job_id=job.id) }}"><button class="btn-danger">{{ icon('stop') }}İptal et</button></form>{% endif %}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="card-body">
+    <div class="flex mb8"><b id="jstatus">{{ {'queued':'Sırada','running':'Çalışıyor','done':'Tamamlandı','failed':'Hata','cancelled':'İptal edildi'}.get(job.status, job.status) }}</b>
+      <span class="spacer"></span><span class="tnum" id="jpct">%{{ job.progress }}</span></div>
+    <div class="progress {{ 'indet' if job.status == 'running' and not job.progress }}" id="jbar"><i style="width:{{ job.progress }}%"></i></div>
+    <p class="small ink2 mb0 mt8" id="jmsg">{{ job.message or '' }}</p>
+    <dl class="kv mt16"><dt>Oluşturma</dt><dd>{{ job.created_at|short_ts }}</dd><dt>Başlangıç</dt><dd>{{ (job.started_at or '—')|short_ts }}</dd><dt>Bitiş</dt><dd>{{ (job.finished_at or '—')|short_ts }}</dd></dl>
+  </div>
+</div>
+{% if job.status == 'failed' %}<div class="callout err">{{ icon('alert') }}<div><b>İş başarısız oldu.</b> {{ job.message }}</div></div>{% endif %}
+{% set r = job.result %}
+{% if r and job.kind == 'tablesearch' %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('target') }}"{{ r.needle }}" için {{ r.findings|length }} eşleşme</h2><span class="meta">{{ r.tables }} tablo tarandı</span></div>
+  {% if r.findings %}<div class="table-wrap"><table><thead><tr><th>Kolon</th><th class="num">Satır</th><th class="tight"></th></tr></thead><tbody>
+  {% for f in r.findings %}<tr><td><a class="mono" href="{{ url_for('siron.table', owner=f.owner or '-', name=f.name) }}#col-{{ f.column }}">{{ f.table }}.<b>{{ f.column }}</b></a></td><td class="num">{{ f.count }}{% if f.capped %}+{% endif %}</td>
+    <td><form method="post" action="{{ url_for('siron.sql_runner') }}"><input type="hidden" name="sql" value="{{ f.sample_sql }}"><button class="btn-secondary btn-sm">Satırları gör</button></form></td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ empty('search', 'Eşleşme bulunamadı') }}{% endif %}
+  {% if r.notes %}<div class="card-foot"><details><summary class="small">{{ r.notes|length }} not / atlanan tablo</summary><ul class="small">{% for n in r.notes %}<li><code>{{ n[0] }}</code>: {{ n[1] }}</li>{% endfor %}</ul></details></div>{% endif %}
+</div>
+{% elif r and job.kind == 'extract' %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('package') }}Çıkarılan dosyalar</h2><span class="meta">{{ r.total_rows|thousands }} satır · {{ r.dir }}</span></div>
+  <div class="table-wrap"><table><thead><tr><th class="tight">#</th><th>Tablo</th><th>Dosya</th><th class="num">Satır</th><th class="num">Beklenen</th><th class="num">Süre</th><th>SHA-256</th></tr></thead><tbody>
+  {% for f in r.files %}<tr><td class="num">{{ f.order }}</td><td>{{ f.table }}</td><td><a href="{{ url_for('siron.export_file', run=r.run, filename=f.file) }}">{{ icon('download') }} {{ f.file }}</a></td>
+    <td class="num">{{ f.rows|thousands }}</td><td class="num muted">{{ f.expected|thousands if f.expected is not none else '' }}</td><td class="num small">{{ f.seconds }} sn</td><td class="mono xs ellipsis" style="max-width:200px">{{ f.sha256 }}</td></tr>{% endfor %}
+  </tbody></table></div>
+  <div class="card-foot"><a class="btn btn-secondary btn-sm" href="{{ url_for('siron.export_file', run=r.run, filename='manifest.csv') }}">{{ icon('download') }}manifest.csv</a></div>
+</div>
+{% elif r and job.kind == 'profile' %}
+<div class="card"><div class="card-head"><h2>{{ icon('chart') }}Profillenen tablolar</h2></div>
+  <ul class="list">{% for t in r.tables %}{% set p = t.split('.') %}<li><a class="t" href="{{ url_for('siron.table', owner=p[0] if p|length > 1 else '-', name=p[-1]) }}">{{ t }}</a></li>{% endfor %}</ul></div>
+{% elif r and job.kind == 'catalog' %}
+<div class="grid g4">{% for k, v in r.items() %}<div class="card kpi"><div class="k-label">{{ k }}</div><div class="k-value">{{ v|thousands }}</div></div>{% endfor %}</div>
+{% elif r and job.kind == 'relcheck' %}
+<div class="callout">{{ icon('shield') }}<div><b>{{ r.checked }}</b> ilişki doğrulandı{% if r.failed %}, {{ r.failed }} hata{% endif %}. <a href="{{ url_for('siron.relations') }}">İlişkilere dön</a></div></div>
+{% endif %}
+{% endblock %}
+{% block scripts %}{% if job.status in ('queued', 'running') %}
+<script>
+(function poll() {
+  setTimeout(function () {
+    fetch("{{ url_for('siron.job_json', job_id=job.id) }}").then(function (r) { return r.json(); }).then(function (j) {
+      if (j.status !== "running" && j.status !== "queued") { location.reload(); return; }
+      document.getElementById("jpct").textContent = "%" + j.progress;
+      document.querySelector("#jbar i").style.width = j.progress + "%";
+      document.getElementById("jbar").classList.toggle("indet", !j.progress);
+      document.getElementById("jmsg").textContent = j.message || "";
+      poll();
+    }).catch(poll);
+  }, 1500);
+})();
+</script>{% endif %}{% endblock %}

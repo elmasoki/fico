@@ -1,24 +1,26 @@
 {% extends "base.html" %}
-{% from "_macros.html" import table_label, table_link, status_badge with context %}
+{% from "_macros.html" import icon, table_label, table_link, status_badge, empty with context %}
+{% block page_title %}Arama{% endblock %}
+{% block subtitle %}{% if q %}<p class="sub">"<b>{{ q }}</b>" için {{ total }} sonuç</p>{% endif %}{% endblock %}
 {% block content %}
-<h1>Arama: "{{ q }}"</h1>
-{% if not q %}<p class="muted">Üstteki kutuya bir tablo, kolon, SQL parçası veya not yazın.</p>{% else %}
-<div class="grid">
-<div class="card"><h2 style="margin-top:0">Ekranlar ({{ results.captures|length }})</h2>
-  {% for c in results.captures %}<p><a href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a> <span class="small muted">{{ c.notes or '' }}</span></p>{% else %}<p class="muted small">—</p>{% endfor %}</div>
-<div class="card"><h2 style="margin-top:0">Tablolar ({{ results.tables|length }})</h2>
-  {% for t in results.tables %}<p>{{ table_link(t.key) }} <span class="small muted">{{ (t.comment or '')[:100] }}</span></p>{% else %}<p class="muted small">—</p>{% endfor %}</div>
+{% if not q %}<div class="card">{{ empty('search', 'Ne arıyorsunuz?', '<span class="small">Üstteki kutuya tablo, kolon, SQL parçası, ekran veya not yazın. Kısayol: <kbd>/</kbd></span>') }}</div>{% else %}
+<div class="grid g3">
+  <div class="card"><div class="card-head"><h2>{{ icon('record') }}Yakalamalar</h2><span class="meta">{{ results.captures|length }}</span></div>
+    <ul class="list">{% for c in results.captures %}<li><a class="t grow" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a></li>{% else %}<li class="muted small">—</li>{% endfor %}</ul></div>
+  <div class="card"><div class="card-head"><h2>{{ icon('list') }}Envanter</h2><span class="meta">{{ results.screens|length }}</span></div>
+    <ul class="list">{% for s in results.screens %}<li><span class="grow"><span class="t">{{ s.name }}</span><span class="s">{{ s.module or '' }}</span></span></li>{% else %}<li class="muted small">—</li>{% endfor %}</ul></div>
+  <div class="card"><div class="card-head"><h2>{{ icon('table') }}Tablolar</h2><span class="meta">{{ results.tables|length }}</span></div>
+    <ul class="list">{% for t in results.tables[:30] %}<li><span class="grow">{{ table_link(t.key, 't') }}<span class="s">{{ (t.comment or '')[:80] }}</span></span></li>{% else %}<li class="muted small">—</li>{% endfor %}</ul></div>
 </div>
-<div class="card"><h2 style="margin-top:0">Kolonlar ({{ results.columns|length }})</h2>
-  <table><tr><th>Kolon</th><th>Tip</th><th>Açıklama</th></tr>
-  {% for c in results.columns %}<tr><td><a href="{{ url_for('siron.table', owner=c.owner, name=c.table) }}#col-{{ c.name }}">{{ c.owner }}.{{ c.table }}.<b>{{ c.name }}</b></a></td><td class="small">{{ c.type_label }}</td><td class="small">{{ c.comment or '' }}</td></tr>
-  {% else %}<tr><td colspan="3" class="muted small">—</td></tr>{% endfor %}</table></div>
-<div class="card"><h2 style="margin-top:0">SQL'ler ({{ results.statements|length }})</h2>
-  <table><tr><th>Ekran</th><th>SQL_ID</th><th>SQL</th></tr>
-  {% for s in results.statements %}<tr><td class="small">{{ s.capture_name }}</td><td><a href="{{ url_for('siron.statement', capture_id=s.capture_id, sql_id=s.sql_id) }}"><code>{{ s.sql_id }}</code></a></td><td class="sqlcell">{{ s.sql_text }}</td></tr>
-  {% else %}<tr><td colspan="3" class="muted small">—</td></tr>{% endfor %}</table></div>
-<div class="card"><h2 style="margin-top:0">Notlar ({{ results.notes|length }})</h2>
-  {% for a in results.notes %}<p>{{ table_link((a.owner or None, a.table_name)) }}{% if a.column_name %}.{{ a.column_name }}{% endif %} {{ status_badge(a.status) }}
-    <span class="small">{{ a.note or '' }}{% if a.target %} → <b>{{ a.target }}</b>{% endif %}</span></p>{% else %}<p class="muted small">—</p>{% endfor %}</div>
+<div class="card"><div class="card-head"><h2>{{ icon('columns') }}Kolonlar</h2><span class="meta">{{ results.columns|length }}</span></div>
+  <div class="table-wrap" style="max-height:380px"><table><thead><tr><th>Kolon</th><th>Tip</th><th>Açıklama</th></tr></thead><tbody>
+  {% for c in results.columns %}<tr><td><a class="mono" href="{{ url_for('siron.table', owner=c.owner, name=c.table) }}#col-{{ c.name }}">{{ c.owner }}.{{ c.table }}.<b>{{ c.name }}</b></a></td><td class="small">{{ c.type_label }}</td><td class="small">{{ c.comment or '' }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted small">—</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card"><div class="card-head"><h2>{{ icon('code') }}SQL'ler</h2><span class="meta">{{ results.statements|length }}</span></div>
+  <div class="table-wrap" style="max-height:380px"><table><thead><tr><th>Ekran</th><th>SQL_ID</th><th>SQL</th></tr></thead><tbody>
+  {% for s in results.statements %}<tr><td class="small">{{ s.capture_name }}</td><td><a class="mono" href="{{ url_for('siron.statement', capture_id=s.capture_id, sql_id=s.sql_id) }}">{{ s.sql_id }}</a></td><td class="sqlcell">{{ s.sql_text }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted small">—</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card"><div class="card-head"><h2>{{ icon('edit') }}Notlar</h2><span class="meta">{{ results.notes|length }}</span></div>
+  <ul class="list">{% for a in results.notes %}<li><span class="grow">{{ table_link((a.owner or None, a.table_name)) }}{% if a.column_name %}.<b class="mono">{{ a.column_name }}</b>{% endif %}<span class="s">{{ a.note or '' }}{% if a.target %} → <b>{{ a.target }}</b>{% endif %}</span></span>{{ status_badge(a.status) }}</li>{% else %}<li class="muted small">—</li>{% endfor %}</ul></div>
 {% endif %}
 {% endblock %}

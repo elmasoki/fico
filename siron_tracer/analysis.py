@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 from .sqlinsight import ColumnKey, SqlInsight, analyse_sql
+from .sqlutil import sql_signature
 
 ObjectKey = Tuple[Optional[str], str]
 
@@ -47,6 +48,7 @@ class Statement:
     executions: List[Execution] = field(default_factory=list)
     insight: SqlInsight = field(default_factory=SqlInsight)
     tables: List[ObjectKey] = field(default_factory=list)
+    signature: str = ""
 
     @property
     def exec_count(self) -> int:
@@ -84,6 +86,8 @@ class TableUsage:
     statements: List[Statement] = field(default_factory=list)
     actions: Set[str] = field(default_factory=set)
     columns: Set[str] = field(default_factory=set)
+    indirect: bool = False                     # only reached through a package / view
+    via: Set[ObjectKey] = field(default_factory=set)
 
     @property
     def key(self) -> ObjectKey:
@@ -109,6 +113,22 @@ class CaptureAnalysis:
     statements: List[Statement]
     tables: List[TableUsage]
     columns: Dict[ColumnKey, ColumnUsage]
+
+    @property
+    def direct_tables(self) -> List[TableUsage]:
+        return [t for t in self.tables if not t.indirect]
+
+    @property
+    def indirect_tables(self) -> List[TableUsage]:
+        return [t for t in self.tables if t.indirect]
+
+    @property
+    def groups(self) -> "OrderedDict[str, List[Statement]]":
+        """Statements grouped by literal-free signature (variants of the same SQL)."""
+        out: "OrderedDict[str, List[Statement]]" = OrderedDict()
+        for st in self.statements:
+            out.setdefault(st.signature, []).append(st)
+        return out
 
     @property
     def insights(self) -> List[Tuple[str, SqlInsight]]:
@@ -156,7 +176,8 @@ def analyse(records: List[dict], catalog=None, default_owner: Optional[str] = No
         if st is None:
             insight = insight_for(ex.sql_id, ex.sql_text, catalog, default_owner)
             st = statements[ex.sql_id] = Statement(ex.sql_id, ex.sql_text, ex.action, insight=insight,
-                                                   tables=list(insight.objects))
+                                                   tables=list(insight.objects),
+                                                   signature=sql_signature(ex.sql_text))
         st.executions.append(ex)
         for obj in ex.audit_objects:
             if obj not in st.tables and not any(t[1] == obj[1] and obj[0] in (None, t[0]) for t in st.tables):
@@ -169,16 +190,30 @@ def analyse(records: List[dict], catalog=None, default_owner: Optional[str] = No
             u = usage.get(key)
             if u is None:
                 u = usage[key] = TableUsage(key[0], key[1], objects.get(key))
+            u.indirect = False
             u.statements.append(st)
             if st.action:
                 u.actions.add(st.action)
+        if catalog is not None and catalog.has_dependencies:
+            for obj in st.tables:
+                otype = objects.get(obj)
+                if otype in ("PACKAGE", "PROCEDURE", "FUNCTION", "VIEW", "MATERIALIZED VIEW"):
+                    for base in catalog.underlying_tables(obj):
+                        if base in st.tables:
+                            continue
+                        u = usage.get(base)
+                        if u is None:
+                            u = usage[base] = TableUsage(base[0], base[1], objects.get(base), indirect=True)
+                        u.via.add(obj)
+                        if st not in u.statements:
+                            u.statements.append(st)
         for col, kinds in st.insight.columns.items():
             cu = columns.setdefault(col, ColumnUsage())
             cu.kinds |= kinds
             cu.sql_ids.add(st.sql_id)
             if col[:2] in usage:
                 usage[col[:2]].columns.add(col[2])
-    tables = sorted(usage.values(), key=lambda u: (-len(u.statements), u.label))
+    tables = sorted(usage.values(), key=lambda u: (u.indirect, -len(u.statements), u.label))
     return CaptureAnalysis(list(statements.values()), tables, columns)
 
 
@@ -211,12 +246,15 @@ def analyse_project(captures: Iterable[dict], load_records: Callable[[int], List
     for c in captures:
         if c["status"] != "done" or c["is_noise"]:
             continue
-        ca = analyse(load_records(c["id"]), catalog, default_owner, noise)
+        ca = analyse(load_records(c["id"]), catalog, c.get("schema_name") or default_owner, noise)
         result.captures.append((c, ca))
         for t in ca.tables:
-            entry = result.tables.setdefault(t.key, {"type": t.obj_type, "screens": [], "actions": set()})
+            entry = result.tables.setdefault(t.key, {"type": t.obj_type, "screens": [], "actions": set(),
+                                                     "indirect": True, "kinds": set()})
             entry["screens"].append((c, t))
             entry["actions"] |= t.actions
+            entry["indirect"] = entry["indirect"] and t.indirect
+            entry["kinds"].add(c.get("kind") or "screen")
         for col, cu in ca.columns.items():
             entry = result.columns.setdefault(col, {"kinds": set(), "screens": {}})
             entry["kinds"] |= cu.kinds

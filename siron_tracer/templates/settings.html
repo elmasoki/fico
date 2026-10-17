@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block page_title %}Ayarlar{% endblock %}
+{% block subtitle %}<p class="sub">Yakalama formunda sunulan DB kullanıcıları ve şemalar. config.ini'deki değerler her zaman listenin başındadır.</p>{% endblock %}
+{% block content %}
+<div class="grid g2">
+  <form method="post" class="card">
+    <div class="card-head"><h2>{{ icon('user') }}DB kullanıcıları ve şemalar</h2></div>
+    <div class="card-body">
+      <div class="field"><label>Ek DB kullanıcıları</label><textarea name="db_users" rows="5" placeholder="RAPOR_USER&#10;BATCH_USER">{{ saved_users|join('\n') }}</textarea>
+        <div class="hint">Her satıra bir kullanıcı. config.ini: <b>{{ settings.siron_db_user }}</b></div></div>
+      <div class="field"><label>Ek şemalar</label><textarea name="schemas" rows="4" placeholder="SIRON_KYC">{{ saved_schemas|join('\n') }}</textarea>
+        <div class="hint">Veri sözlüğü tüm şemalar için yüklenir. config.ini: <b>{{ settings.schemas|join(', ') }}</b></div></div>
+    </div>
+    <div class="card-foot"><button class="btn-primary">{{ icon('check') }}Kaydet</button><span class="small muted">Etkin: {{ users|join(', ') }} · {{ schemas|join(', ') }}</span></div>
+  </form>
+  <div class="card">
+    <div class="card-head"><h2>{{ icon('settings') }}Yapılandırma</h2><span class="meta">config.ini (salt-okunur)</span></div>
+    <div class="card-body"><dl class="kv">
+      <dt>Bağlantı</dt><dd class="mono">{{ settings.oracle_user }}@{{ settings.oracle_dsn }}</dd>
+      <dt>Şifre</dt><dd>{{ 'tanımlı' if settings.oracle_password else 'tanımsız' }}</dd>
+      <dt>Audit kaynağı</dt><dd>{{ settings.audit_source }}</dd>
+      <dt>Maskeleme</dt><dd>{{ MASK_MODES.get(settings.mask_default) }}</dd>
+      <dt>Ekran satır sınırı</dt><dd>{{ settings.max_result_rows|thousands }}</dd>
+      <dt>CSV dışa aktarma sınırı</dt><dd>{{ settings.max_export_rows|thousands }}</dd>
+      <dt>Profil örneklemi</dt><dd>{{ settings.profile_sample_rows|thousands }} satır</dd>
+      <dt>Veri çıkarma klasörü</dt><dd class="mono">{{ settings.export_dir }}</dd>
+      <dt>Yerel depo</dt><dd class="mono">{{ settings.sqlite_path }}</dd>
+      <dt>Sorgu zaman aşımı</dt><dd>{{ settings.query_timeout_sec }} sn</dd>
+    </dl></div>
+  </div>
+</div>
+{% endblock %}

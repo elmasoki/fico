@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty with context %}
+{% block page_title %}Ekran envanteri{% endblock %}
+{% block subtitle %}<p class="sub">Siron'daki tüm ekranların listesi. Yakalamalar ekranlara bağlandıkça kapsam ölçülür; "eksik bir şey kaldı mı?" sorusunun cevabı buradadır.</p>{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ url_for('siron.mapping_xlsx') }}">{{ icon('sheet') }}Excel ile toplu düzenle</a>{% endblock %}
+{% block content %}
+<div class="grid g-main">
+  <div class="card">
+    <div class="card-head"><h2>{{ icon('list') }}Ekranlar</h2><span class="meta">{{ rows|length }} / {{ total }}</span>
+      <div class="tools"><form method="get"><select name="module" onchange="this.form.submit()" style="width:200px"><option value="">Tüm modüller</option>{% for m in modules %}<option {% if module == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></form></div></div>
+    {% if rows %}
+    <div class="table-wrap tall"><table>
+      <thead><tr><th>Modül</th><th>Ekran</th><th>Öncelik</th><th>Durum</th><th>Yakalamalar</th><th class="tight"></th></tr></thead><tbody>
+      {% for r in rows %}{% set s = r.s %}
+      <tr>
+        <td class="small">{{ s.module or '—' }}</td>
+        <td><span class="cell-title">{{ s.name }}</span>{% if s.description %}<span class="cell-sub">{{ s.description }}</span>{% endif %}</td>
+        <td class="small">{{ s.priority or '' }}</td>
+        <td>{% set cls = {'todo':'', 'captured':'info', 'mapped':'warn', 'done':'ok', 'skip':''}[r.status] %}<span class="badge {{ cls }}">{{ SCREEN_STATUSES.get(r.status) }}</span></td>
+        <td class="small">{% for c in r.captures[:3] %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.start_local[5:16] }}</a>{% endfor %}</td>
+        <td><details style="position:relative"><summary class="btn btn-ghost btn-sm" style="list-style:none">{{ icon('edit') }}</summary>
+          <div class="card" style="position:absolute;right:0;top:32px;width:340px;z-index:10;box-shadow:var(--shadow-lg)"><form class="card-body" method="post">
+            <input type="hidden" name="action" value="update"><input type="hidden" name="id" value="{{ s.id }}">
+            <div class="field"><label>Modül</label><input type="text" name="module" value="{{ s.module or '' }}"></div>
+            <div class="field"><label>Ekran</label><input type="text" name="name" value="{{ s.name }}"></div>
+            <div class="field"><label>Açıklama</label><input type="text" name="description" value="{{ s.description or '' }}"></div>
+            <div class="row"><div class="field"><label>Öncelik</label><input type="text" name="priority" value="{{ s.priority or '' }}"></div>
+              <div class="field"><label>Durum</label><select name="status">{% for k, v in SCREEN_STATUSES.items() %}<option value="{{ k }}" {% if s.status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div></div>
+            <div class="field"><label>Not</label><input type="text" name="notes" value="{{ s.notes or '' }}"></div>
+            <div class="flex"><button class="btn-primary btn-sm">Kaydet</button></div></form>
+            <form method="post" class="card-foot" onsubmit="return confirm('Ekran envanterden silinsin mi?')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ s.id }}"><button class="btn-danger btn-sm">{{ icon('trash') }}Sil</button></form>
+          </div></details></td>
+      </tr>{% endfor %}</tbody></table></div>
+    {% else %}{{ empty('list', 'Envanter boş', '<span class="small">Sağdaki formla ekranları tek tek veya toplu ekleyin.</span>') }}{% endif %}
+  </div>
+  <div class="stack">
+    <form method="post" class="card"><input type="hidden" name="action" value="bulk">
+      <div class="card-head"><h2>{{ icon('plus') }}Toplu ekle</h2></div>
+      <div class="card-body"><div class="field mb0"><label>Her satıra bir ekran — <code>Modül &gt; Ekran</code></label>
+        <textarea name="lines" rows="8" placeholder="Müşteri > Müşteri Detay&#10;Müşteri > Hesap Hareketleri&#10;Alarm > Alarm Listesi&#10;Alarm > Vaka Detay"></textarea></div></div>
+      <div class="card-foot"><button class="btn-primary btn-sm">{{ icon('plus') }}Ekle</button><span class="xs muted">Excel'den kopyala-yapıştır (sekme ayraçlı) da olur.</span></div>
+    </form>
+    <form method="post" class="card"><input type="hidden" name="action" value="add">
+      <div class="card-head"><h2>{{ icon('edit') }}Tek ekran</h2></div>
+      <div class="card-body">
+        <div class="row"><div class="field"><label>Modül</label><input type="text" name="module" list="mods"><datalist id="mods">{% for m in modules %}<option value="{{ m }}">{% endfor %}</datalist></div>
+          <div class="field"><label>Öncelik</label><input type="text" name="priority" placeholder="Yüksek"></div></div>
+        <div class="field"><label>Ekran adı</label><input type="text" name="name" required></div>
+        <div class="field mb0"><label>Açıklama</label><input type="text" name="description"></div>
+      </div>
+      <div class="card-foot"><button class="btn-primary btn-sm">Ekle</button></div>
+    </form>
+    {% if unlinked %}
+    <div class="card"><div class="card-head"><h2>{{ icon('link') }}Bağlanmamış yakalamalar</h2><span class="meta">{{ unlinked|length }}</span></div>
+      <ul class="list">{% for c in unlinked[:6] %}<li><a class="t grow" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a></li>{% endfor %}</ul>
+      <form method="post" action="{{ url_for('siron.inventory_link') }}" class="card-foot"><input type="hidden" name="create" value="1"><button class="btn-secondary btn-sm">{{ icon('plus') }}Hepsini envantere ekle ve bağla</button></form></div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block page_title %}Excel eşleme{% endblock %}
+{% block subtitle %}<p class="sub">Eşleme çalışma kitabını indirin, iş analistleri sarı hücreleri doldursun, dosyayı geri yükleyin. Her yükleme öncesi notlar yedeklenir ve tek tıkla geri alınabilir.</p>{% endblock %}
+{% block content %}
+<div class="grid g2">
+  <div class="card">
+    <div class="card-head"><h2>{{ icon('download') }}1. Çalışma kitabını indir</h2></div>
+    <div class="card-body">
+      <ol class="steps">
+        <li><b>Özet</b> — proje durumu ve doldurma talimatı</li>
+        <li><b>Ekranlar</b> ve <b>Envanter</b> — ekran listesi, modül, durum</li>
+        <li><b>Tablolar</b> — durum, hedef, çıkarma filtresi, not (düzenlenebilir)</li>
+        <li><b>Kolon eşleme</b> — kullanım, doluluk, örnek değer; durum, hassas, hedef alan, not (düzenlenebilir)</li>
+        <li><b>İlişkiler</b> — güven ve kanıtla birlikte</li>
+      </ol>
+      <p class="small muted">Durum ve Hassas kolonlarında açılır liste vardır; hassas kolonların örnek değerleri maskelenir.</p>
+      <a class="btn btn-primary" href="{{ url_for('siron.mapping_xlsx') }}">{{ icon('sheet') }}Excel'i indir (.xlsx)</a>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h2>{{ icon('upload') }}2. Doldurulan dosyayı geri yükle</h2></div>
+    <form class="card-body" method="post" action="{{ url_for('siron.excel_import') }}" enctype="multipart/form-data">
+      <div class="field"><label>Dosya</label><input type="file" name="file" accept=".xlsx" required></div>
+      <label class="check"><input type="checkbox" name="ignore_errors" value="1"><span>Hatalı satırları atla<small>Varsayılan: herhangi bir hata varsa hiçbir değişiklik yapılmaz</small></span></label>
+      <div class="callout mt8">{{ icon('info') }}<div>Excel kaynak kabul edilir: bir hücreyi boşaltmak o kararı siler. "Evet (tahmin)" hassasiyeti otomatik tespit olarak kalır.</div></div>
+      <button class="btn-primary" data-busy="Yükleniyor">{{ icon('upload') }}İçe aktar</button>
+    </form>
+    {% if last_import or backup_at %}
+    <div class="card-foot">
+      {% if last_import %}<span class="small">Son içe aktarma: <b>{{ last_import.file }}</b> · {{ last_import.at }} · {{ last_import.changed.tables }} tablo, {{ last_import.changed.columns }} kolon, {{ last_import.changed.screens }} ekran</span>{% endif %}
+      <span class="spacer"></span>
+      {% if backup_at %}<form method="post" action="{{ url_for('siron.excel_undo') }}" onsubmit="return confirm('Notlar {{ backup_at }} öncesine döndürülecek. Emin misiniz?')"><button class="btn-danger btn-sm">{{ icon('refresh') }}Geri al</button></form>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

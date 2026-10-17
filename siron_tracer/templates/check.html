@@ -1,13 +1,17 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block page_title %}Bağlantı kontrolü{% endblock %}
+{% block subtitle %}<p class="sub">Bağlantı, audit politikaları, kayıt akışı ve yetkiler. Hata görünen her satır sorun değildir; ör. unified kullanıyorsanız traditional kontrolü atlanır.</p>{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ url_for('siron.check') }}">{{ icon('refresh') }}Yeniden kontrol</a>{% endblock %}
 {% block content %}
-<h1>Kurulum kontrolü</h1>
-<p class="small muted">Hata görünen satırlar her zaman sorun değildir: örneğin unified auditing kullanıyorsanız traditional kontrolleri hata verebilir.
-  <code>UNIFIED_AUDIT_TRAIL</code> yetki hatası verirse: <code>GRANT AUDIT_VIEWER TO &lt;kullanıcınız&gt;;</code></p>
-<table>
-  <tr><th>Kontrol</th><th>Durum</th><th>Sonuç</th></tr>
+<div class="card">
+  <ul class="list">
   {% for title, ok, detail in checks %}
-  <tr><td>{{ title }}</td><td>{% if ok %}<span class="badge ok">OK</span>{% else %}<span class="badge err">HATA</span>{% endif %}</td>
-      <td class="small"><code>{{ detail }}</code></td></tr>
+    <li><span class="avatar {{ '' if ok else 'red' }}">{{ icon('check' if ok else 'alert') }}</span>
+      <span class="grow"><span class="t">{{ title }}</span><span class="s mono">{{ detail }}</span></span>
+      {% if ok %}<span class="badge ok">OK</span>{% else %}<span class="badge err">Hata</span>{% endif %}</li>
   {% endfor %}
-</table>
+  </ul>
+  <div class="card-foot small muted">{{ icon('info') }} <span><code>UNIFIED_AUDIT_TRAIL</code> yetki hatası verirse: <code>GRANT AUDIT_VIEWER TO &lt;kullanıcınız&gt;;</code></span></div>
+</div>
 {% endblock %}

@@ -1,36 +1,125 @@
+{%- from "_macros.html" import icon with context -%}
+{%- set ep = (request.endpoint or '').split('.')[-1] -%}
 <!doctype html>
 <html lang="tr">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{% block title %}Siron SQL Tracer{% endblock %}</title>
+<title>{% block title %}{{ self.page_title() | striptags | trim or 'Siron SQL Tracer' }}{% endblock %} · Siron SQL Tracer</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script>try { var t = localStorage.getItem("st-theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
 </head>
 <body>
-<header>
-  <a class="brand" href="{{ url_for('siron.index') }}">Siron SQL Tracer</a>
-  <nav>
-    <a href="{{ url_for('siron.index') }}">Ekranlar</a>
-    <a href="{{ url_for('siron.tables') }}">Tablolar</a>
-    <a href="{{ url_for('siron.mapping') }}">Kolon eşleme</a>
-    <a href="{{ url_for('siron.relations') }}">İlişkiler</a>
-    <a href="{{ url_for('siron.er') }}">ER diyagramı</a>
-    <a href="{{ url_for('siron.builder') }}">Sorgu oluşturucu</a>
-    <a href="{{ url_for('siron.sql_runner') }}">SQL</a>
-    <a href="{{ url_for('siron.report_options') }}">Raporlar</a>
-    <a href="{{ url_for('siron.check') }}">Kontrol</a>
-  </nav>
-  <form class="search" action="{{ url_for('siron.search') }}">
-    <input type="text" name="q" placeholder="Tablo, kolon, SQL, not ara…" value="{{ request.args.get('q', '') if request.endpoint == 'siron.search' else '' }}">
-  </form>
-</header>
-<main>
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
-  {% endwith %}
-  {% block content %}{% endblock %}
-  <p class="muted small" style="margin-top:30px">kaynak: <b>{{ settings.audit_source }}</b> · Siron kullanıcısı: <b>{{ settings.siron_db_user }}</b>
-    · şemalar: {{ settings.schemas|join(', ') }} · bağlantı: {{ settings.oracle_user or '-' }}@{{ settings.oracle_dsn or '-' }}</p>
-</main>
+{% include "_icons.html" %}
+{%- macro nav(endpoint, text, ic, also=(), extra='') -%}
+<a href="{{ url_for('siron.' ~ endpoint) }}" class="{{ 'on' if ep == endpoint or ep in also }}">{{ icon(ic) }}<span>{{ text }}</span>{{ extra|safe }}</a>
+{%- endmacro -%}
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="{{ url_for('siron.index') }}">
+      <span class="brand-mark">{{ icon('logo') }}</span>
+      <span><b>Siron SQL Tracer</b><span>Veri keşif & eşleme stüdyosu</span></span>
+    </a>
+    <nav class="nav">
+      {{ nav('index', 'Genel bakış', 'home') }}
+      <div class="nav-group"><div class="nav-label">Keşif</div>
+        {{ nav('captures', 'Yakalamalar', 'record', ('capture', 'capture_columns', 'capture_find', 'statement'),
+               '<span class="live"></span>' if recording_count else '') }}
+        {{ nav('inventory', 'Ekran envanteri', 'list') }}
+        {{ nav('coverage', 'Kapsam', 'pie') }}
+      </div>
+      <div class="nav-group"><div class="nav-label">Veri modeli</div>
+        {{ nav('tables', 'Tablolar', 'table', ('table',)) }}
+        {{ nav('mapping', 'Kolon eşleme', 'columns') }}
+        {{ nav('relations', 'İlişkiler', 'link') }}
+        {{ nav('er', 'ER diyagramı', 'graph') }}
+      </div>
+      <div class="nav-group"><div class="nav-label">Veri</div>
+        {{ nav('builder', 'Sorgu oluşturucu', 'blocks') }}
+        {{ nav('sql_runner', 'SQL konsolu', 'code') }}
+        {{ nav('migration', 'Taşıma paketi', 'package') }}
+      </div>
+      <div class="nav-group"><div class="nav-label">Çıktılar</div>
+        {{ nav('report_options', 'Raporlar', 'file') }}
+        {{ nav('excel', 'Excel eşleme', 'sheet') }}
+        {{ nav('snapshots', 'Kayıtlı sonuçlar', 'bookmark') }}
+      </div>
+      <div class="nav-group"><div class="nav-label">Sistem</div>
+        {{ nav('jobs', 'Arka plan işleri', 'cpu', ('job',), '<span class="count" id="nav-jobs"></span>') }}
+        {{ nav('activity', 'Etkinlik günlüğü', 'activity') }}
+        {{ nav('settings_page', 'Ayarlar', 'settings') }}
+        {{ nav('check', 'Bağlantı kontrolü', 'plug') }}
+      </div>
+    </nav>
+    <div class="side-foot">
+      <div class="row-x"><span>Kaynak</span><b>{{ settings.audit_source }}</b></div>
+      <div class="row-x"><span>Şema</span><b class="ellipsis">{{ settings.current_schema }}</b></div>
+      <div class="row-x"><span>Bağlantı</span><b class="ellipsis" title="{{ settings.oracle_dsn }}">{{ settings.oracle_user or '—' }}</b></div>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <nav class="crumbs">{% block crumbs %}<b>{{ self.page_title() | striptags | trim }}</b>{% endblock %}</nav>
+      <div class="top-actions">
+        <form class="search-box" action="{{ url_for('siron.search') }}">{{ icon('search') }}
+          <input type="search" name="q" id="global-search" placeholder="Tablo, kolon, SQL, not ara…" value="{{ request.args.get('q', '') if ep == 'search' else '' }}"><kbd>/</kbd></form>
+        <a class="icon-btn" href="{{ url_for('siron.jobs') }}" title="Arka plan işleri" id="jobs-btn">{{ icon('cpu') }}</a>
+        <button type="button" class="icon-btn" id="theme-btn" title="Tema değiştir">{{ icon('moon') }}</button>
+      </div>
+    </header>
+    <div class="toasts" id="toasts">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for cat, msg in messages %}<div class="toast {{ cat }}">{{ icon('check' if cat == 'ok' else 'alert') }}<span>{{ msg }}</span><button type="button" onclick="this.parentNode.remove()">{{ icon('x') }}</button></div>{% endfor %}
+      {% endwith %}
+    </div>
+    <main class="content">
+      <div class="page-head">
+        <div class="titles">
+          {% block eyebrow %}{% endblock %}
+          <h1>{% block page_title %}{% endblock %}</h1>
+          {% block subtitle %}{% endblock %}
+        </div>
+        <div class="actions">{% block actions %}{% endblock %}</div>
+      </div>
+      {% block content %}{% endblock %}
+    </main>
+    <footer class="app-foot"><span>Siron SQL Tracer {{ app_version }}</span><span>Salt-okunur çalışır · sorgular {{ settings.current_schema }} şemasında</span>
+      <span>Hassas veri maskeleme: {{ MASK_MODES.get(settings.mask_default, settings.mask_default) }}</span></footer>
+  </div>
+</div>
+<script>
+(function () {
+  var token = {{ csrf_token()|tojson }};
+  document.addEventListener("submit", function (e) {
+    var f = e.target;
+    if ((f.method || "").toLowerCase() === "post" && !f.querySelector("input[name=_csrf]")) {
+      var i = document.createElement("input"); i.type = "hidden"; i.name = "_csrf"; i.value = token; f.appendChild(i);
+    }
+    var b = f.querySelector("button[data-busy]");
+    if (b && !f.hasAttribute("data-noblock")) { setTimeout(function () { b.disabled = true; b.innerHTML = '<span class="spinner"></span> ' + b.dataset.busy; }, 10); }
+  }, true);
+  window.csrfToken = token;
+  var root = document.documentElement, btn = document.getElementById("theme-btn");
+  function dark() { var t = root.getAttribute("data-theme"); return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches; }
+  function paint() { btn.innerHTML = '<svg class="ic"><use href="#i-' + (dark() ? 'sun' : 'moon') + '"/></svg>'; }
+  btn.addEventListener("click", function () { var t = dark() ? "light" : "dark"; root.setAttribute("data-theme", t); try { localStorage.setItem("st-theme", t); } catch (e) {} paint(); });
+  paint();
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); document.getElementById("global-search").focus(); }
+  });
+  setTimeout(function () { document.querySelectorAll(".toast.ok").forEach(function (t) { t.style.transition = "opacity .4s"; t.style.opacity = 0; setTimeout(function () { t.remove(); }, 400); }); }, 6000);
+  function jobs() {
+    fetch("{{ url_for('siron.jobs_active') }}").then(function (r) { return r.json(); }).then(function (list) {
+      var n = document.getElementById("nav-jobs"), b = document.getElementById("jobs-btn");
+      if (n) n.textContent = list.length ? list.length + " aktif" : "";
+      var d = b.querySelector(".dot"); if (list.length && !d) { d = document.createElement("span"); d.className = "dot"; b.appendChild(d); } else if (!list.length && d) d.remove();
+      b.title = list.length ? list.map(function (j) { return j.title + " — %" + j.progress; }).join("\n") : "Arka plan işleri";
+      setTimeout(jobs, list.length ? 3000 : 15000);
+    }).catch(function () {});
+  }
+  jobs();
+})();
+</script>
+{% block scripts %}{% endblock %}
 </body>
 </html>

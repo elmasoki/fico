@@ -112,18 +112,5 @@ def sample_sql(key, column: Column, needle: str, mode: str, rows: int = 20) -> s
     return "SELECT *\n  FROM %s\n WHERE %s\n   AND ROWNUM <= %d" % (qualified(key), cond, rows)
 
 
-# --------------------------------------------------------------------------- masking
-
-def mask_value(value):
-    """Hide personal data in exported reports while keeping the shape visible."""
-    if value is None:
-        return None
-    text = normalise(value)
-    if len(text) <= 2:
-        return "*" * len(text)
-    keep = 2 if len(text) >= 8 else 1
-    return text[:keep] + "*" * (len(text) - 2 * keep) + text[-keep:]
-
-
-def mask_rows(rows: List[tuple]) -> List[tuple]:
-    return [tuple(mask_value(v) for v in row) for row in rows]
+# masking lives in privacy.py; kept importable from here for older callers
+from .privacy import mask_rows, mask_value  # noqa: E402,F401

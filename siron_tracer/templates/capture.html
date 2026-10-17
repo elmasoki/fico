@@ -1,81 +1,94 @@
 {% extends "base.html" %}
-{% from "_macros.html" import table_label, table_link, capture_nav, status_badge, relation_rows with context %}
-{% block title %}{{ capture.name }} - Siron SQL Tracer{% endblock %}
+{% from "_macros.html" import icon, table_label, table_link, capture_nav, capture_crumbs, status_badge, relation_rows, empty with context %}
+{% block page_title %}{{ capture.name }}{% endblock %}
+{% block crumbs %}{{ capture_crumbs(capture) }}{% endblock %}
+{% block eyebrow %}<div class="eyebrow">{{ icon('clock' if capture.kind == 'batch' else 'layers') }}{{ CAPTURE_KINDS.get(capture.kind) }} yakalaması{% if screen %} · {{ screen.module or '' }}{% endif %}
+  {% if capture.is_noise %}<span class="badge">Gürültü</span>{% endif %}</div>{% endblock %}
+{% block subtitle %}<p class="sub">{{ capture.start_local[:19] }} → {{ (capture.end_local or '')[11:19] }} (DB saati) · {{ capture.db_users|join(', ') }} · şema <b>{{ capture.schema_name or settings.current_schema }}</b> · kaynak {{ capture.source }}{% if capture.notes %} · {{ capture.notes }}{% endif %}</p>{% endblock %}
+{% block actions %}
+  <form method="post" action="{{ url_for('siron.refetch_capture', capture_id=capture.id) }}" class="inline"><button class="btn-secondary" data-busy="Çekiliyor" title="Audit kayıtları gecikmeli yazıldıysa">{{ icon('refresh') }}Yeniden çek</button></form>
+  <a class="btn btn-secondary" href="{{ url_for('siron.report', capture=capture.id, download=1) }}">{{ icon('download') }}Rapor</a>
+  <details class="inline" style="position:relative"><summary class="btn btn-secondary" style="list-style:none">{{ icon('settings') }}Düzenle</summary>
+    <div class="card" style="position:absolute;right:0;top:40px;width:380px;z-index:10;box-shadow:var(--shadow-lg)"><div class="card-body">
+      <form method="post" action="{{ url_for('siron.update_capture', capture_id=capture.id) }}">
+        <div class="field"><label>Ad</label><input type="text" name="name" value="{{ capture.name }}"></div>
+        <div class="field"><label>Not</label><input type="text" name="notes" value="{{ capture.notes or '' }}"></div>
+        <div class="row"><div class="field"><label>Tür</label><select name="kind">{% for k, v in CAPTURE_KINDS.items() %}<option value="{{ k }}" {% if capture.kind == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+          <div class="field"><label>Şema</label><select name="schema">{% for s in schemas %}<option {% if (capture.schema_name or settings.current_schema) == s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></div></div>
+        <div class="field"><label>Envanterdeki ekran</label><select name="screen_id"><option value="">—</option>{% for s in screens %}<option value="{{ s.id }}" {% if capture.screen_id == s.id %}selected{% endif %}>{% if s.module %}{{ s.module }} › {% endif %}{{ s.name }}</option>{% endfor %}</select></div>
+        <button class="btn-primary btn-block">Kaydet</button>
+      </form>
+      <hr>
+      <form method="post" action="{{ url_for('siron.update_capture', capture_id=capture.id) }}"><input type="hidden" name="toggle_noise" value="1">
+        <button class="btn-secondary btn-block">{{ icon('filter') }}{{ 'Gürültü işaretini kaldır' if capture.is_noise else 'Gürültü olarak işaretle' }}</button></form>
+      <p class="xs muted">Gürültü yakalamalarındaki SQL'ler diğer tüm yakalamalarda gizlenir (arka plan / heartbeat sorguları).</p>
+      <form method="post" action="{{ url_for('siron.delete_capture', capture_id=capture.id) }}" onsubmit="return confirm('Yakalama ve kayıtları silinsin mi?')"><button class="btn-danger btn-block">{{ icon('trash') }}Yakalamayı sil</button></form>
+    </div></div></details>
+{% endblock %}
 {% block content %}
-<h1>{{ capture.name }} {% if capture.is_noise %}<span class="badge noise">gürültü</span>{% endif %}</h1>
-{{ capture_nav(capture, tab) }}
+{{ capture_nav(capture, tab, ca) }}
+{% if capture.message %}<div class="callout warn">{{ icon('alert') }}<div>{{ capture.message }}</div></div>{% endif %}
+{% if not has_catalog %}<div class="callout">{{ icon('info') }}<div><b>Veri sözlüğü yüklü değil.</b> Tablolar sezgisel bulunuyor; kolon analizi ve ilişki tahmini sınırlı. Genel bakıştan veri sözlüğünü yükleyin.</div></div>{% endif %}
+
+<div class="mini-stats mb16">
+  <div class="mini-stat"><b>{{ ca.direct_tables|length }}</b><span>tablo / nesne</span></div>
+  {% if ca.indirect_tables %}<div class="mini-stat"><b>{{ ca.indirect_tables|length }}</b><span>dolaylı (paket/view)</span></div>{% endif %}
+  <div class="mini-stat"><b>{{ ca.columns|length }}</b><span>kolon</span></div>
+  <div class="mini-stat"><b>{{ ca.statements|length }}</b><span>farklı SQL{% if ca.groups|length < ca.statements|length %} · {{ ca.groups|length }} kalıp{% endif %}</span></div>
+  <div class="mini-stat"><b>{{ relations|length }}</b><span>ilişki</span></div>
+  <div class="mini-stat"><b>{{ record_count|thousands }}</b><span>audit kaydı</span></div>
+  <div class="mini-stat" style="flex:1;min-width:220px"><span>İşlem dağılımı</span><div class="mt8">{% for a, n in actions[:6] %}<span class="badge outline">{{ a }} <b>{{ n }}</b></span>{% endfor %}</div></div>
+</div>
+{% if not capture.is_noise %}<p class="small muted mt0">{% if exclude_noise %}{{ icon('filter') }} Gürültü yakalamalarındaki {{ noise_count }} SQL_ID gizleniyor · <a href="?noise=0">hepsini göster</a>{% else %}Tüm SQL'ler gösteriliyor · <a href="?noise=1">gürültüyü gizle</a>{% endif %}</p>{% endif %}
+
 <div class="card">
-  <div class="stats">
-    <div class="stat"><b>{{ ca.tables|length }}</b><span>tablo / nesne</span></div>
-    <div class="stat"><b>{{ ca.columns|length }}</b><span>kolon</span></div>
-    <div class="stat"><b>{{ ca.statements|length }}</b><span>farklı SQL</span></div>
-    <div class="stat"><b>{{ relations|length }}</b><span>ilişki</span></div>
-    <div class="stat"><b>{{ record_count|thousands }}</b><span>audit kaydı</span></div>
+  <div class="card-head"><h2>{{ icon('table') }}Kullanılan tablolar ve nesneler</h2><span class="meta">{{ ca.tables|length }}</span></div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Nesne</th><th>Tip</th><th>Durum</th><th>İşlemler</th><th class="num">Kolon</th><th class="num">SQL</th><th class="num">Çalışma</th><th>SQL_ID</th></tr></thead>
+    <tbody>
+    {% for t in ca.tables %}{% set a = ann(annotations, t.key) %}
+    <tr><td>{{ table_link(t.key, 'cell-title') }}{% if t.indirect %}<span class="cell-sub">{{ icon('layers') }} dolaylı: {% for v in t.via %}{{ v[1] }}{{ ', ' if not loop.last }}{% endfor %}</span>{% endif %}</td>
+      <td class="small">{{ t.obj_type or '—' }}</td><td>{{ status_badge(a.status) }}</td>
+      <td>{% for x in t.actions|sort %}<span class="badge">{{ x }}</span>{% endfor %}</td>
+      <td class="num">{{ t.columns|length or '' }}</td><td class="num">{{ t.statements|length }}</td><td class="num">{{ t.exec_count }}</td>
+      <td class="small mono">{% for s in t.statements[:4] %}<a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=s.sql_id) }}">{{ s.sql_id }}</a> {% endfor %}{% if t.statements|length > 4 %}<span class="muted">+{{ t.statements|length - 4 }}</span>{% endif %}</td></tr>
+    {% else %}<tr><td colspan="8">{{ empty('table', 'Tablo bulunamadı') }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
   </div>
-  <p class="small">DB saati {{ capture.start_local[:19] }} → {{ (capture.end_local or '')[:19] }}
-    · kaynak <b>{{ capture.source }}</b> · kullanıcı <b>{{ capture.db_user }}</b>
-    {% if capture.os_user %}· OS {{ capture.os_user }}{% endif %}{% if capture.host %}· host {{ capture.host }}{% endif %}
-    {% if capture.program %}· program {{ capture.program }}{% endif %}{% if capture.client_id %}· client {{ capture.client_id }}{% endif %}
-    · {% for a, n in actions %}<span class="badge">{{ a }}: {{ n }}</span>{% endfor %}
-    {% if capture.notes %}<br>Not: {{ capture.notes }}{% endif %}</p>
-  {% if capture.message %}<p class="warn">{{ capture.message }}</p>{% endif %}
-  {% if not has_catalog %}<p class="hint">Veri sözlüğü yüklü değil: tablolar sezgisel bulunuyor, kolon analizi ve ilişki tahmini sınırlı.
-    Ana sayfadan <b>Veri sözlüğünü yükle</b> ile çok daha isabetli sonuç alırsınız.</p>{% endif %}
-  {% if not capture.is_noise %}
-  <p class="small">
-    {% if exclude_noise %}Gürültü olarak işaretli yakalamalardaki {{ noise_count }} SQL_ID gizleniyor. <a href="?noise=0">Hepsini göster</a>
-    {% else %}Tüm SQL'ler gösteriliyor. <a href="?noise=1">Gürültüyü gizle</a>{% endif %}
-  </p>
-  {% endif %}
-  <div class="toolbar">
-    <form method="post" action="{{ url_for('siron.refetch_capture', capture_id=capture.id) }}"><button class="secondary" title="Audit kayıtları gecikmeli yazıldıysa">Yeniden çek</button></form>
-    <form method="post" action="{{ url_for('siron.update_capture', capture_id=capture.id) }}"><input type="hidden" name="toggle_noise" value="1">
-      <button class="secondary" title="Gürültü yakalamalarındaki SQL'ler diğer yakalamalarda gizlenir">{{ 'Gürültü işaretini kaldır' if capture.is_noise else 'Gürültü olarak işaretle' }}</button></form>
-    <a class="btn secondary" href="{{ url_for('siron.capture_csv', capture_id=capture.id) }}">SQL listesi CSV</a>
-    <a class="btn secondary" href="{{ url_for('siron.report', capture=capture.id, download=1) }}">HTML rapor indir</a>
-    <form method="post" action="{{ url_for('siron.delete_capture', capture_id=capture.id) }}" onsubmit="return confirm('Yakalama ve kayıtları silinsin mi?')"><button class="danger">Sil</button></form>
-  </div>
-  <details><summary class="small">Ad / not düzenle</summary>
-    <form method="post" action="{{ url_for('siron.update_capture', capture_id=capture.id) }}">
-      <div class="row"><div><label>Ad</label><input type="text" name="name" value="{{ capture.name }}"></div>
-      <div><label>Not</label><input type="text" name="notes" value="{{ capture.notes or '' }}"></div></div>
-      <button class="secondary">Kaydet</button>
-    </form></details>
 </div>
 
-<h2>Kullanılan tablolar / nesneler ({{ ca.tables|length }})</h2>
-<table>
-  <tr><th>Nesne</th><th>Tip</th><th>Durum</th><th>İşlemler</th><th class="right">Kullanılan kolon</th><th class="right">SQL</th><th class="right">Çalışma</th><th>SQL_ID'ler</th></tr>
-  {% for t in ca.tables %}
-  {% set a = ann(annotations, t.key) %}
-  <tr><td><b>{{ table_link(t.key) }}</b></td><td class="small">{{ t.obj_type or '' }}</td><td>{{ status_badge(a.status) }}</td>
-    <td>{% for x in t.actions|sort %}<span class="badge">{{ x }}</span>{% endfor %}</td>
-    <td class="right">{{ t.columns|length or '' }}</td>
-    <td class="right">{{ t.statements|length }}</td><td class="right">{{ t.exec_count }}</td>
-    <td class="small">{% for s in t.statements[:8] %}<a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=s.sql_id) }}">{{ s.sql_id }}</a> {% endfor %}{% if t.statements|length > 8 %}…{% endif %}</td></tr>
-  {% else %}<tr><td colspan="8" class="muted">Tablo bulunamadı.</td></tr>{% endfor %}
-</table>
-
 {% if relations %}
-<h2>Bu ekrandaki tablolar arası ilişkiler ({{ relations|length }})</h2>
-{{ relation_rows(relations[:15]) }}
-{% if relations|length > 15 %}<p class="small"><a href="{{ url_for('siron.relations', capture=capture.id) }}">Tümünü gör ({{ relations|length }})</a></p>{% endif %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('link') }}Bu ekrandaki ilişkiler</h2><span class="meta">{{ relations|length }}</span>
+    <div class="tools"><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.er', capture=capture.id) }}">{{ icon('graph') }}ER diyagramı</a></div></div>
+  {{ relation_rows(relations[:12]) }}
+  {% if relations|length > 12 %}<div class="card-foot"><a href="{{ url_for('siron.relations', capture=capture.id) }}">Tümünü gör ({{ relations|length }})</a></div>{% endif %}
+</div>
 {% endif %}
 
-<h2>SQL'ler ({{ ca.statements|length }})</h2>
-<div class="scroll">
-<table>
-  <tr><th>İlk görülme (UTC)</th><th>SQL_ID</th><th>İşlem</th><th class="right">Çalışma</th><th class="right">Farklı bind</th><th>Tablolar</th><th>SQL</th></tr>
-  {% for s in ca.statements %}
-  <tr>
-    <td class="small nowrap">{{ s.first_ts[11:23] }}</td>
-    <td><a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=s.sql_id) }}"><code>{{ s.sql_id }}</code></a></td>
-    <td>{{ s.action or '' }}{% if s.failed %} <span class="badge err">{{ s.failed }} hata</span>{% endif %}</td>
-    <td class="right">{{ s.exec_count }}</td><td class="right">{{ s.bind_sets|length }}</td>
-    <td class="small">{% for t in s.tables %}<span class="badge">{{ table_label(t) }}</span>{% endfor %}</td>
-    <td class="sqlcell" title="{{ s.sql_text[:2000] }}">{{ s.sql_text }}</td>
-  </tr>
-  {% else %}<tr><td colspan="7" class="muted">SQL kaydı yok. Audit açık mı, filtreler doğru mu? "Kontrol" sayfasına bakın.</td></tr>{% endfor %}
-</table>
+<div class="card">
+  <div class="card-head"><h2>{{ icon('code') }}SQL'ler</h2><span class="meta">{{ ca.statements|length }} SQL_ID{% if grouped and ca.groups|length < ca.statements|length %} · {{ ca.groups|length }} kalıp (yalnız literal farkı olanlar gruplandı){% endif %}</span>
+    <div class="tools"><a class="btn btn-ghost btn-sm" href="?group={{ '0' if grouped else '1' }}&noise={{ '1' if exclude_noise else '0' }}">{{ 'Gruplamayı kapat' if grouped else 'Benzerleri grupla' }}</a>
+      <a class="btn btn-ghost btn-sm" href="{{ url_for('siron.capture_csv', capture_id=capture.id) }}">{{ icon('download') }}CSV</a></div></div>
+  <div class="table-wrap tall">
+  <table>
+    <thead><tr><th class="tight">İlk (UTC)</th><th class="tight">SQL_ID</th><th class="tight">İşlem</th><th class="num">Çalışma</th><th class="num">Bind seti</th><th>Tablolar</th><th>SQL</th></tr></thead>
+    <tbody>
+    {% for group in (ca.groups.values() if grouped else ca.statements) %}
+      {% set s = group[0] if grouped else group %}{% set n = group|length if grouped else 1 %}
+      <tr>
+        <td class="small nowrap muted">{{ s.first_ts[11:23] }}</td>
+        <td class="nowrap"><a class="mono" href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=s.sql_id) }}">{{ s.sql_id }}</a>{% if n > 1 %}<span class="badge info" title="Yalnızca literal değerleri farklı {{ n }} SQL">+{{ n - 1 }} varyant</span>{% endif %}</td>
+        <td class="nowrap">{{ s.action or '' }}{% if s.failed %} <span class="badge err">{{ s.failed }} hata</span>{% endif %}</td>
+        <td class="num">{{ (group|sum(attribute='exec_count')) if grouped else s.exec_count }}</td><td class="num">{{ s.bind_sets|length }}</td>
+        <td class="small">{% for t in s.tables[:4] %}<span class="badge">{{ t[1] }}</span>{% endfor %}{% if s.tables|length > 4 %}<span class="muted xs">+{{ s.tables|length - 4 }}</span>{% endif %}</td>
+        <td class="sqlcell" title="{{ s.sql_text[:2000] }}">{{ s.sql_text }}</td>
+      </tr>
+    {% else %}<tr><td colspan="7">{{ empty('code', 'SQL kaydı yok', '<span class="small">Audit açık mı, kullanıcılar doğru mu? <a href="' ~ url_for('siron.check') ~ '">Bağlantı kontrolü</a></span>') }}</td></tr>{% endfor %}
+    </tbody>
+  </table>
+  </div>
 </div>
 {% endblock %}

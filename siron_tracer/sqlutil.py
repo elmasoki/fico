@@ -446,3 +446,28 @@ def format_sql(sql: str, indent: str = "  ") -> str:
             pos = m.end()
         out.append(re.sub(r"\s+", " ", chunk[pos:]))
     return "".join(out).strip()
+
+
+# --------------------------------------------------------------------------- signatures
+
+_NUMBER_RE = re.compile(r"(?<![\w$#.:])-?\d+(\.\d+)?(?![\w$#])")
+_IN_LIST_RE = re.compile(r"\(\s*\?(\s*,\s*\?)+\s*\)")
+
+
+def sql_signature(sql: str) -> str:
+    """Statement text with literals replaced by '?', for grouping SQL that differs
+    only in literal values (applications that do not use bind variables)."""
+    parts = []
+    for kind, s, e in _scan(sql):
+        chunk = sql[s:e]
+        if kind == "string":
+            parts.append("?")
+        elif kind == "comment":
+            parts.append(" ")
+        elif kind == "qident":
+            parts.append(chunk)
+        else:
+            parts.append(_NUMBER_RE.sub("?", chunk).upper())
+    text = re.sub(r"\s+", " ", "".join(parts)).strip()
+    text = _IN_LIST_RE.sub("(?)", text)
+    return re.sub(r"\s*([(),=<>])\s*", r"\1", text)

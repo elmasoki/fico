@@ -26,7 +26,7 @@ ORA_TS_FMT = "YYYY-MM-DD HH24:MI:SS.FF6"
 
 @dataclass
 class AuditFilter:
-    db_user: str
+    db_users: List[str]
     start_utc: datetime
     end_utc: datetime
     start_local: datetime
@@ -36,6 +36,15 @@ class AuditFilter:
     program: Optional[str] = None
     client_id: Optional[str] = None
     max_rows: int = 20000
+
+
+def _users(f: AuditFilter, column: str, binds: dict) -> str:
+    """'column IN (:u0, :u1 ...)' for the capture's DB users."""
+    names = []
+    for i, user in enumerate(f.db_users or []):
+        binds["u%d" % i] = user.upper()
+        names.append(":u%d" % i)
+    return "%s IN (%s)" % (column, ", ".join(names) or "NULL")
 
 
 def _ts(value: datetime) -> str:
@@ -66,6 +75,9 @@ def _rows(cursor) -> List[dict]:
         for key in ("session_id", "entry_id", "statement_id", "return_code"):
             if rec[key] is not None:
                 rec[key] = str(rec[key])
+        for key in ("sql_text", "sql_binds"):
+            if isinstance(rec[key], str):  # the unified trail ends SQL_TEXT with a NUL character
+                rec[key] = rec[key].rstrip("\x00")
         if rec["sql_text"] and not rec["sql_id"]:
             rec["sql_id"] = compute_sql_id(rec["sql_text"])
         out.append(rec)
@@ -92,20 +104,20 @@ def unified_ts_column(conn) -> str:
 
 def fetch_unified(conn, f: AuditFilter) -> List[dict]:
     ts = unified_ts_column(conn)
-    binds = {"db_user": f.db_user, "start_ts": _ts(f.start_utc), "end_ts": _ts(f.end_utc),
-             "max_rows": f.max_rows}
+    binds = {"start_ts": _ts(f.start_utc), "end_ts": _ts(f.end_utc), "max_rows": f.max_rows}
+    users = _users(f, "dbusername", binds)
     extra = _optional_filters(f, {"os_user": "os_username", "host": "userhost",
                                   "program": "client_program_name",
                                   "client_id": "client_identifier"}, binds)
     sql = f"""
-        SELECT {ts}, dbusername, os_username, userhost, client_program_name,
+        SELECT {ts} AS ts, dbusername, os_username, userhost, client_program_name,
                sessionid, entry_id, statement_id, action_name, object_schema,
                object_name, sql_text, sql_binds, return_code, client_identifier,
-               CAST(NULL AS VARCHAR2(13))
+               CAST(NULL AS VARCHAR2(13)) AS sql_id
           FROM unified_audit_trail
          WHERE {ts} >= TO_TIMESTAMP(:start_ts, '{ORA_TS_FMT}')
            AND {ts} <  TO_TIMESTAMP(:end_ts, '{ORA_TS_FMT}')
-           AND dbusername = :db_user{extra}
+           AND {users}{extra}
          ORDER BY {ts}, sessionid, entry_id"""
     with conn.cursor() as cur:
         cur.execute(_limit(sql), binds)
@@ -116,19 +128,19 @@ def fetch_unified(conn, f: AuditFilter) -> List[dict]:
 
 def fetch_traditional(conn, f: AuditFilter) -> List[dict]:
     """DBA_AUDIT_TRAIL (AUDIT_TRAIL=DB,EXTENDED). SQL_TEXT is cut at 2000 chars here."""
-    binds = {"db_user": f.db_user, "start_ts": _ts(f.start_utc), "end_ts": _ts(f.end_utc),
-             "max_rows": f.max_rows}
+    binds = {"start_ts": _ts(f.start_utc), "end_ts": _ts(f.end_utc), "max_rows": f.max_rows}
+    users = _users(f, "username", binds)
     extra = _optional_filters(f, {"os_user": "os_username", "host": "userhost",
                                   "client_id": "client_id"}, binds)
     sql = f"""
-        SELECT CAST(SYS_EXTRACT_UTC(extended_timestamp) AS TIMESTAMP), username,
+        SELECT CAST(SYS_EXTRACT_UTC(extended_timestamp) AS TIMESTAMP) AS ts, username,
                os_username, userhost, terminal, sessionid, entryid, statementid,
-               action_name, owner, obj_name, TO_CHAR(sql_text), TO_CHAR(sql_bind),
-               returncode, client_id, CAST(NULL AS VARCHAR2(13))
+               action_name, owner, obj_name, TO_CHAR(sql_text) AS sql_text, TO_CHAR(sql_bind) AS sql_bind,
+               returncode, client_id, CAST(NULL AS VARCHAR2(13)) AS sql_id
           FROM dba_audit_trail
          WHERE extended_timestamp >= FROM_TZ(TO_TIMESTAMP(:start_ts, '{ORA_TS_FMT}'), 'UTC')
            AND extended_timestamp <  FROM_TZ(TO_TIMESTAMP(:end_ts, '{ORA_TS_FMT}'), 'UTC')
-           AND username = :db_user{extra}
+           AND {users}{extra}
          ORDER BY extended_timestamp, sessionid, entryid"""
     with conn.cursor() as cur:
         cur.execute(_limit(sql), binds)
@@ -137,20 +149,20 @@ def fetch_traditional(conn, f: AuditFilter) -> List[dict]:
 
 def fetch_aud(conn, f: AuditFilter) -> List[dict]:
     """SYS.AUD$ directly: same data as DBA_AUDIT_TRAIL but SQLTEXT is a full CLOB."""
-    binds = {"db_user": f.db_user, "start_ts": _ts(f.start_utc), "end_ts": _ts(f.end_utc),
-             "max_rows": f.max_rows}
+    binds = {"start_ts": _ts(f.start_utc), "end_ts": _ts(f.end_utc), "max_rows": f.max_rows}
+    users = _users(f, "a.userid", binds)
     extra = _optional_filters(f, {"os_user": "a.spare1", "host": "a.userhost",
                                   "client_id": "a.clientid"}, binds)
     sql = f"""
-        SELECT a.ntimestamp#, a.userid, a.spare1, a.userhost, a.terminal,
-               a.sessionid, a.entryid, a.statement, aa.name, a.obj$creator,
+        SELECT a.ntimestamp# AS ts, a.userid, a.spare1, a.userhost, a.terminal,
+               a.sessionid, a.entryid, a.statement, aa.name AS action_name, a.obj$creator,
                a.obj$name, a.sqltext, a.sqlbind, a.returncode, a.clientid,
-               CAST(NULL AS VARCHAR2(13))
+               CAST(NULL AS VARCHAR2(13)) AS sql_id
           FROM sys.aud$ a
           LEFT JOIN sys.audit_actions aa ON aa.action = a.action#
          WHERE a.ntimestamp# >= TO_TIMESTAMP(:start_ts, '{ORA_TS_FMT}')
            AND a.ntimestamp# <  TO_TIMESTAMP(:end_ts, '{ORA_TS_FMT}')
-           AND a.userid = :db_user{extra}
+           AND {users}{extra}
          ORDER BY a.ntimestamp#, a.sessionid, a.entryid"""
     with conn.cursor() as cur:
         cur.execute(_limit(sql), binds)
@@ -160,7 +172,7 @@ def fetch_aud(conn, f: AuditFilter) -> List[dict]:
 # --------------------------------------------------------------------------- cursor cache
 
 _CURSOR_FILTER = f"""
-         s.parsing_user_id = (SELECT user_id FROM all_users WHERE username = :db_user)
+         s.parsing_user_id IN (SELECT user_id FROM all_users WHERE {{users}})
      AND s.last_active_time >= TO_TIMESTAMP(:start_ts, '{ORA_TS_FMT}')
      AND s.last_active_time <= TO_TIMESTAMP(:end_ts, '{ORA_TS_FMT}')"""
 
@@ -168,18 +180,23 @@ _CURSOR_FILTER = f"""
 def fetch_cursor_cache(conn, f: AuditFilter) -> List[dict]:
     """GV$SQL + GV$SQL_BIND_CAPTURE: no auditing needed, but binds are sampled
     (roughly every 15 minutes) and only one row per cursor is available."""
-    binds = {"db_user": f.db_user, "start_ts": _ts(f.start_local), "end_ts": _ts(f.end_local)}
+    binds = {"start_ts": _ts(f.start_local), "end_ts": _ts(f.end_local)}
+    users = _users(f, "username", binds)
+    cursor_filter = _CURSOR_FILTER.format(users=users)
     extra = _optional_filters(f, {"program": "s.module"}, binds)
     sql = f"""
-        SELECT s.last_active_time, :db_user, NULL, NULL,
-               s.module || NVL2(s.action, ' / ' || s.action, NULL), s.inst_id,
-               s.child_number, NULL,
+        SELECT s.last_active_time AS ts,
+               (SELECT username FROM all_users u WHERE u.user_id = s.parsing_user_id) AS db_user,
+               NULL AS os_user, NULL AS host,
+               s.module || NVL2(s.action, ' / ' || s.action, NULL) AS program, s.inst_id AS session_id,
+               s.child_number AS entry_id, NULL AS statement_id,
                DECODE(s.command_type, 2, 'INSERT', 3, 'SELECT', 6, 'UPDATE',
                       7, 'DELETE', 47, 'PL/SQL EXECUTE', 189, 'MERGE',
-                      TO_CHAR(s.command_type)),
-               NULL, NULL, s.sql_fulltext, NULL, NULL, NULL, s.sql_id
+                      TO_CHAR(s.command_type)) AS action,
+               NULL AS obj_schema, NULL AS obj_name, s.sql_fulltext AS sql_text, NULL AS sql_binds,
+               NULL AS return_code, NULL AS client_id, s.sql_id
           FROM gv$sql s
-         WHERE {_CURSOR_FILTER}{extra}
+         WHERE {cursor_filter}{extra}
          ORDER BY s.last_active_time"""
     with conn.cursor() as cur:
         cur.execute(_limit(sql), dict(binds, max_rows=f.max_rows))
@@ -190,7 +207,7 @@ def fetch_cursor_cache(conn, f: AuditFilter) -> List[dict]:
           FROM gv$sql_bind_capture b
           JOIN gv$sql s ON s.inst_id = b.inst_id AND s.sql_id = b.sql_id
                        AND s.child_number = b.child_number
-         WHERE {_CURSOR_FILTER}{extra}
+         WHERE {cursor_filter}{extra}
          ORDER BY b.inst_id, b.sql_id, b.child_number, b.position"""
     captured: Dict[tuple, Dict[int, Optional[str]]] = {}
     try:

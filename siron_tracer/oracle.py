@@ -72,11 +72,13 @@ class Oracle:
             return cur.fetchone()[0]
 
     # ------------------------------------------------------------------ audit
-    def fetch_records(self, f: sources.AuditFilter, flush: bool = False) -> List[dict]:
+    def fetch_records(self, f: sources.AuditFilter, flush: bool = False,
+                      source: Optional[str] = None) -> List[dict]:
+        source = source or self.settings.audit_source
         with self.connect() as conn:
-            if flush and self.settings.audit_source == "unified":
+            if flush and source == "unified":
                 self.flush_unified(conn)
-            return sources.fetch(conn, self.settings.audit_source, f)
+            return sources.fetch(conn, source, f)
 
     @staticmethod
     def flush_unified(conn) -> Optional[str]:
@@ -121,6 +123,12 @@ class Oracle:
                             "WHERE (c.owner IN ({o}) AND c.constraint_type IN ('P','U','R')) "
                             "OR (c.owner, c.constraint_name) IN (SELECT r_owner, r_constraint_name "
                             "FROM {p}_constraints WHERE owner IN ({o}) AND constraint_type = 'R')",
+            # packages / procedures / views / triggers and what they reference
+            "dependencies": "SELECT owner, name, type, referenced_owner, referenced_name, referenced_type "
+                            "FROM {p}_dependencies WHERE owner IN ({o}) "
+                            "AND referenced_type IN ('TABLE','VIEW','MATERIALIZED VIEW','PACKAGE','PROCEDURE',"
+                            "'FUNCTION','SYNONYM','TYPE') "
+                            "AND referenced_owner NOT IN ('SYS','SYSTEM','PUBLIC','XDB','MDSYS','CTXSYS','ORDSYS')",
         }
         out = {}
         with self.connect() as conn, conn.cursor() as cur:
@@ -156,8 +164,8 @@ class Oracle:
             return cols, rows, cur.fetchall()
 
     # ------------------------------------------------------------------ run
-    def _prepare_read_only(self, conn, cur):
-        schema = self.settings.current_schema
+    def _prepare_read_only(self, conn, cur, schema: Optional[str] = None):
+        schema = schema or self.settings.current_schema
         if not _IDENT_RE.match(schema):
             raise OracleError("Geçersiz şema adı: %s" % schema)
         conn.rollback()
@@ -178,8 +186,8 @@ class Oracle:
         return sql
 
     def run_select(self, sql: str, max_rows: Optional[int] = None, binds: Optional[dict] = None,
-                   timeout_sec: Optional[int] = None):
-        """Run a SELECT in a read-only transaction under the Siron schema.
+                   timeout_sec: Optional[int] = None, schema: Optional[str] = None):
+        """Run a SELECT in a read-only transaction under the Siron schema (or `schema`).
 
         Returns (columns, rows, truncated).
         """
@@ -188,7 +196,7 @@ class Oracle:
         with self.connect() as conn, conn.cursor() as cur:
             if timeout_sec:
                 conn.call_timeout = timeout_sec * 1000
-            self._prepare_read_only(conn, cur)
+            self._prepare_read_only(conn, cur, schema)
             try:
                 cur.execute(TOOL_MARKER + sql, binds or {})
                 cols = [d[0] for d in cur.description]
@@ -198,12 +206,12 @@ class Oracle:
         truncated = len(rows) > max_rows
         return cols, [tuple(_display(v) for v in r) for r in rows[:max_rows]], truncated
 
-    def stream_select(self, sql: str, max_rows: int, batch: int = 2000):
+    def stream_select(self, sql: str, max_rows: int, batch: int = 2000, schema: Optional[str] = None):
         """Yield the column names, then row batches (for full CSV exports)."""
         sql = self._check_select(sql)
         with self.connect() as conn, conn.cursor() as cur:
             conn.call_timeout = 0
-            self._prepare_read_only(conn, cur)
+            self._prepare_read_only(conn, cur, schema)
             cur.arraysize = batch
             try:
                 cur.execute(TOOL_MARKER + sql)
@@ -238,9 +246,18 @@ class Oracle:
         total, matched = rows[0]
         return int(matched or 0), int(total or 0)
 
+    def profile(self, key, table, sample_rows: int = 200000, columns=None, progress=None) -> dict:
+        """Column statistics of a catalogue table (see profiling.py)."""
+        from .profiling import profile_table
+        run = lambda sql: self.run_select(sql, max_rows=100, timeout_sec=max(self.settings.query_timeout_sec, 300))
+        return profile_table(run, key, table, sample_rows, columns, progress)
+
     # ------------------------------------------------------------------ diagnostics
-    def diagnostics(self) -> List[Tuple[str, bool, str]]:
+    def diagnostics(self, users: Optional[List[str]] = None, schemas: Optional[List[str]] = None
+                    ) -> List[Tuple[str, bool, str]]:
         s = self.settings
+        users = users or [s.siron_db_user]
+        schemas = schemas or s.schemas
         checks: List[Tuple[str, bool, str]] = []
 
         def check(title, sql, binds=None, fmt=lambda rows: ", ".join(" ".join(map(str, r)) for r in rows)):
@@ -259,16 +276,22 @@ class Oracle:
         check("Etkin unified audit politikaları", "SELECT * FROM audit_unified_enabled_policies")
         check("audit_trail parametresi (traditional)",
               "SELECT value FROM v$parameter WHERE name = 'audit_trail'")
-        check("Son 1 saatte Siron audit kayıt sayısı (unified)",
-              "SELECT COUNT(*) FROM unified_audit_trail WHERE dbusername = :u "
-              "AND event_timestamp > SYSTIMESTAMP - INTERVAL '1' HOUR", {"u": s.siron_db_user})
-        check("Son 1 saatte Siron audit kayıt sayısı (traditional)",
-              "SELECT COUNT(*) FROM dba_audit_trail WHERE username = :u "
-              "AND timestamp > SYSDATE - 1/24", {"u": s.siron_db_user})
+        ubinds = {"u%d" % i: u for i, u in enumerate(users)}
+        uin = ", ".join(":" + k for k in ubinds)
+        check("Son 1 saatte audit kayıtları (unified) — %s" % ", ".join(users),
+              "SELECT dbusername, COUNT(*) FROM unified_audit_trail WHERE dbusername IN (%s) "
+              "AND event_timestamp > SYSTIMESTAMP - INTERVAL '1' HOUR GROUP BY dbusername" % uin, ubinds)
+        if s.audit_source != "unified":
+            check("Son 1 saatte audit kayıtları (traditional)",
+                  "SELECT username, COUNT(*) FROM dba_audit_trail WHERE username IN (%s) "
+                  "AND timestamp > SYSDATE - 1/24 GROUP BY username" % uin, ubinds)
         check("GV$SQL erişimi", "SELECT COUNT(*) FROM gv$sql WHERE ROWNUM <= 1")
-        check("Siron şema nesneleri",
-              "SELECT owner, COUNT(*) FROM all_objects WHERE owner = :u GROUP BY owner",
-              {"u": s.current_schema})
+        sbinds = {"s%d" % i: x for i, x in enumerate(schemas)}
+        check("Şema nesneleri — %s" % ", ".join(schemas),
+              "SELECT owner, COUNT(*) FROM all_objects WHERE owner IN (%s) GROUP BY owner"
+              % ", ".join(":" + k for k in sbinds), sbinds)
+        check("Bağımlılık görünümü (paket/view analizi)",
+              "SELECT COUNT(*) FROM dba_dependencies WHERE owner IN (%s)" % ", ".join(":" + k for k in sbinds), sbinds)
         return checks
 
 

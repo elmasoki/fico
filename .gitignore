@@ -1,7 +1,9 @@
-__pycache__/
+*.log
 *.pyc
-.venv/
-venv/
-data/
-config.ini
 .pytest_cache/
+.venv/
+__pycache__/
+config.ini
+data/
+venv/
+wheels/

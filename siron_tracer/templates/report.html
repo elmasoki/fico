@@ -1,124 +1,102 @@
-{% from "_macros.html" import er_svg, er_legend, usage_badges, status_badge, conf_badge, source_badges, check_text, table_label with context %}
+{% from "_macros.html" import er_svg, usage_badges, conf_badge, source_badges, check_text, table_label with context %}
+{% macro st(status) %}{% if status %}<span class="badge st-{{ status }}"><span class="dot"></span>{{ STATUSES.get(status) }}</span>{% endif %}{% endmacro %}
 <!doctype html>
 <html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title }}</title>
-<style>{% include "report.css" %}</style>
-</head>
-<body><div class="page">
-<h1>{{ title }}</h1>
-<p class="meta">Oluşturulma: {{ created }} · Siron DB kullanıcısı: {{ settings.siron_db_user }} · Şemalar: {{ settings.schemas|join(', ') }}
-  {% if masked %} · <b>Sonuç verileri maskelenmiştir</b>{% endif %}</p>
-
-<div class="stats">
-  <div class="stat"><b>{{ screens|length }}</b><span>ekran</span></div>
-  <div class="stat"><b>{{ sections|length }}</b><span>tablo / view</span></div>
-  <div class="stat"><b>{{ col_usage|length }}</b><span>kullanılan kolon</span></div>
-  <div class="stat"><b>{{ relations|length }}</b><span>ilişki</span></div>
-  <div class="stat"><b>{{ stmt_count }}</b><span>farklı SQL</span></div>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ title }}</title><style>{% include "report.css" %}</style></head>
+<body>
+<header class="cover">
+  <div class="brand"><span class="mark">S</span>SIRON SQL TRACER · VERİ KEŞİF VE EŞLEME</div>
+  <h1>{{ title }}</h1>
+  <div class="meta">Oluşturulma {{ created }} · Siron kullanıcısı {{ settings.siron_db_user }} · Şemalar {{ settings.schemas|join(', ') }}</div>
+  {% if mask_mode != 'none' %}<div class="flag">Veri maskeleme: {{ MASK_MODES.get(mask_mode) }}</div>{% endif %}
+</header>
+<div class="page">
+{% set n = namespace(i=0) %}
+{% if cov %}
+<div class="kpis">
+  <div class="kpi"><div class="l">Ekran kapsamı</div><div class="v">{{ cov.screens_pct|pct if cov.screens_total else screens|length }}</div><div class="s">{{ cov.screens_captured if cov.screens_total else 'yakalanan ekran' }}{% if cov.screens_total %} / {{ cov.screens_total }} ekran{% endif %}</div>{% if cov.screens_pct %}<div class="meter"><i style="width:{{ cov.screens_pct }}%"></i></div>{% endif %}</div>
+  <div class="kpi"><div class="l">Dokunulan tablo</div><div class="v">{{ cov.tables_touched }}</div><div class="s">{% if cov.tables_total %}{{ cov.tables_pct|pct }} · {{ cov.tables_total }} şema tablosundan{% else %}tablo / nesne{% endif %}</div>{% if cov.tables_pct %}<div class="meter"><i style="width:{{ cov.tables_pct }}%"></i></div>{% endif %}</div>
+  <div class="kpi"><div class="l">Kolon kararları</div><div class="v">{{ cov.columns_pct|pct }}</div><div class="s">{{ cov.columns_decided }} / {{ cov.columns_used }} kolon · {{ cov.columns_targeted }} hedefli</div><div class="meter"><i style="width:{{ cov.columns_pct or 0 }}%"></i></div></div>
+  <div class="kpi"><div class="l">İlişki doğrulama</div><div class="v">{{ cov.relations_pct|pct if cov.relations_inferred else '—' }}</div><div class="s">{{ cov.relations_verified }} / {{ cov.relations_inferred }} ilişki</div><div class="meter"><i style="width:{{ cov.relations_pct or 0 }}%"></i></div></div>
 </div>
+{% set tt = cov.tables_by_status.values()|sum %}
+<div class="grid2">
+  <div class="box"><h4 style="margin-top:0">Tablo kararları</h4>{% if tt %}<div class="hbar">{% for k in ['migrate','review','ignore',''] %}{% set c = cov.tables_by_status.get(k, 0) %}{% if c %}<i class="b-{{ k or 'none' }}" style="width:{{ 100 * c / tt }}%"></i>{% endif %}{% endfor %}</div>
+    <div class="legend">{% for k, l in [('migrate','Taşınacak'),('review','İncelenecek'),('ignore','Gereksiz'),('','Karar yok')] %}<span><i class="b-{{ k or 'none' }}"></i>{{ l }} <b>{{ cov.tables_by_status.get(k, 0) }}</b></span>{% endfor %}</div>{% endif %}</div>
+  <div class="box"><h4 style="margin-top:0">Kolon kararları</h4>{% if cov.columns_used %}<div class="hbar">{% for k in ['migrate','review','ignore',''] %}{% set c = cov.columns_by_status.get(k, 0) %}{% if c %}<i class="b-{{ k or 'none' }}" style="width:{{ 100 * c / cov.columns_used }}%"></i>{% endif %}{% endfor %}</div>
+    <div class="legend">{% for k, l in [('migrate','Taşınacak'),('review','İncelenecek'),('ignore','Gereksiz'),('','Karar yok')] %}<span><i class="b-{{ k or 'none' }}"></i>{{ l }} <b>{{ cov.columns_by_status.get(k, 0) }}</b></span>{% endfor %}</div>{% endif %}</div>
+</div>
+{% endif %}
 
-<div class="box toc"><b>İçindekiler</b>
-<ol>
-  <li><a href="#screens">Ekranlar</a></li>
-  <li><a href="#tables">Tablolar ve kolonlar</a></li>
-  <li><a href="#mapping">Kolon eşleme matrisi</a></li>
-  <li><a href="#relations">İlişkiler ve ER diyagramı</a></li>
-  {% if include_sql %}<li><a href="#sql">SQL'ler</a></li>{% endif %}
-  {% if snaps %}<li><a href="#results">Sorgu sonuçları</a></li>{% endif %}
+<div class="box"><b>İçindekiler</b>
+<ol class="toc">
+  <li><a href="#screens">Ekranlar</a></li><li><a href="#tables">Tablolar ve kolonlar</a></li><li><a href="#mapping">Kolon eşleme matrisi</a></li>
+  <li><a href="#relations">İlişkiler ve ER diyagramı</a></li>{% if include_sql %}<li><a href="#sql">SQL'ler</a></li>{% endif %}{% if snaps %}<li><a href="#results">Sorgu sonuçları</a></li>{% endif %}
 </ol></div>
 
-<h2 id="screens">1. Ekranlar</h2>
-<table>
-  <tr><th>Ekran</th><th>Zaman (DB)</th><th>Tablolar</th><th>Kolon</th><th>SQL</th><th>Not</th></tr>
-  {% for c, ca, stmts in screens %}
-  <tr><td><b>{{ c.name }}</b></td><td class="small">{{ c.start_local[:16] }} → {{ (c.end_local or '')[11:16] }}</td>
-    <td class="small">{% for t in ca.tables %}<span class="badge">{{ table_label(t.key) }}</span>{% endfor %}</td>
-    <td>{{ ca.columns|length }}</td><td>{{ ca.statements|length }}</td><td class="small">{{ c.notes or '' }}</td></tr>
-  {% endfor %}
-</table>
+{% set n.i = n.i + 1 %}<h2 id="screens"><span class="num">{{ n.i }}</span>Ekranlar</h2>
+<table><thead><tr><th>Ekran</th><th>Tür</th><th>Zaman (DB)</th><th>Kullanıcı / şema</th><th>Tablolar</th><th class="num">Kolon</th><th class="num">SQL</th></tr></thead><tbody>
+{% for c, ca, stmts in screens %}<tr><td><b>{{ c.name }}</b>{% if c.notes %}<div class="small muted">{{ c.notes }}</div>{% endif %}</td><td class="small">{{ CAPTURE_KINDS.get(c.kind) }}</td>
+  <td class="small">{{ c.start_local[:16] }}</td><td class="small">{{ c.db_users|join(', ') }} · {{ c.schema_name or settings.current_schema }}</td>
+  <td class="small">{% for t in ca.tables %}<span class="badge">{{ t.name }}</span>{% endfor %}</td><td class="num">{{ ca.columns|length }}</td><td class="num">{{ ca.statements|length }}</td></tr>{% endfor %}
+</tbody></table>
 
-<h2 id="tables">2. Tablolar ve kolonlar</h2>
-{% for s in sections %}
-{% set a = ann(annotations, s.key) %}
+{% set n.i = n.i + 1 %}<h2 id="tables"><span class="num">{{ n.i }}</span>Tablolar ve kolonlar</h2>
+{% for s in sections %}{% set a = ann(annotations, s.key) %}
 <div class="box" id="t-{{ s.key[1] }}">
-  <h3 style="margin-top:0">{{ table_label(s.key) }} {{ status_badge(a.status) }}
-    {% if s.info %}<span class="small muted">{{ s.info.obj_type }}{% if s.info.num_rows is not none %} · {{ s.info.num_rows|thousands }} satır{% endif %} · {{ s.info.columns|length }} kolon</span>{% endif %}</h3>
-  {% if s.info and s.info.comment %}<p class="small"><b>DB açıklaması:</b> {{ s.info.comment }}</p>{% endif %}
-  {% if a.note or a.target %}<div class="note">{% if a.target %}<b>Hedef:</b> {{ a.target }}. {% endif %}{{ a.note or '' }}</div>{% endif %}
-  <p class="small"><b>Ekranlar:</b> {% for c in s.screens %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}</p>
+  <h3>{{ table_label(s.key) }} {{ st(a.status) }}<span class="small muted" style="font-weight:400">{% if s.info %}{{ s.info.obj_type }}{% if s.info.num_rows is not none %} · {{ s.info.num_rows|thousands }} satır{% endif %} · {{ s.info.columns|length }} kolon{% endif %}{% if s.indirect %} · dolaylı (paket/view){% endif %}</span></h3>
+  {% if s.info and s.info.comment %}<div class="small"><b>DB açıklaması:</b> {{ s.info.comment }}</div>{% endif %}
+  {% if a.note or a.target or a.extract_filter %}<div class="note">{% if a.target %}<b>Hedef:</b> {{ a.target }}. {% endif %}{% if a.extract_filter %}<b>Filtre:</b> <span class="mono">{{ a.extract_filter }}</span>. {% endif %}{{ a.note or '' }}</div>{% endif %}
+  <div class="small"><b>Ekranlar:</b> {% for c in s.screens %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}</div>
   {% if s.cols or s.used_unknown %}
-  <table>
-    <tr><th>Kolon</th><th>Tip</th><th>Anahtar</th><th>DB açıklaması</th><th>Kullanım</th><th>Ekranlar</th><th>Durum</th><th>Hedef</th><th>Not</th></tr>
-    {% for c in s.cols %}{% set u = col_usage.get((s.key[0], s.key[1], c.name)) %}{% set ca = ann(annotations, s.key, c.name) %}
-    <tr><td class="mono"><b>{{ c.name }}</b></td><td class="small">{{ c.type_label }}{{ '' if c.nullable else ' NN' }}</td>
-      <td>{% if c.name in s.pk %}<span class="badge src-constraint">PK</span>{% endif %}{% if c.name in s.fk %}<span class="badge src-sql">FK</span>{% endif %}</td>
-      <td class="small">{{ c.comment or '' }}</td><td>{% if u %}{{ usage_badges(u.kinds) }}{% endif %}</td>
-      <td class="small">{% if u %}{% for c2 in u.screens %}{{ c2.name }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}</td>
-      <td>{{ status_badge(ca.status) }}</td><td class="small"><b>{{ ca.target or '' }}</b></td><td class="small">{{ ca.note or '' }}</td></tr>
+  <table><thead><tr><th>Kolon</th><th>Tip</th><th>Açıklama</th><th>Kullanım</th>{% if include_profiles %}<th class="num">Doluluk</th><th>Örnek değerler</th>{% endif %}<th>Durum</th><th>Hedef</th><th>Not</th></tr></thead><tbody>
+    {% for c in s.cols %}{% set u = col_usage.get((s.key[0], s.key[1], c.name)) %}{% set ca = ann(annotations, s.key, c.name) %}{% set p = s.profiles.get(c.name) %}
+    <tr><td class="mono"><b>{{ c.name }}</b>{% if c.name in s.pk %}<span class="kb">PK</span>{% endif %}{% if c.name in s.fk %}<span class="kb fk">FK</span>{% endif %}{% if s.sensitive.get(c.name) %}<span class="pii">KVKK</span>{% endif %}</td>
+      <td class="small">{{ c.type_label }}</td><td class="small">{{ c.comment or '' }}</td><td>{% if u %}{{ usage_badges(u.kinds) }}{% endif %}</td>
+      {% if include_profiles %}<td class="num small">{{ (p.fill_pct ~ '%') if p and p.fill_pct is not none else '' }}</td>
+      <td class="small">{% if p and p.top %}{% for v, cnt in p.top[:4] %}<span class="badge">{{ show(v, s.key, c.name) }}</span>{% endfor %}{% endif %}</td>{% endif %}
+      <td>{{ st(ca.status) }}</td><td class="small"><b>{{ ca.target or '' }}</b></td><td class="small">{{ ca.note or '' }}</td></tr>
     {% endfor %}
-    {% for col in s.used_unknown %}{% set u = col_usage.get(col) %}
-    <tr><td class="mono"><b>{{ col[2] }}</b></td><td colspan="3" class="small muted">veri sözlüğünde yok</td><td>{{ usage_badges(u.kinds) }}</td>
-      <td class="small">{% for c2 in u.screens %}{{ c2.name }}{{ ', ' if not loop.last }}{% endfor %}</td><td colspan="3"></td></tr>
-    {% endfor %}
-  </table>
+    {% for col in s.used_unknown %}{% set u = col_usage.get(col) %}<tr><td class="mono"><b>{{ col[2] }}</b></td><td colspan="2" class="small muted">veri sözlüğünde yok</td><td>{{ usage_badges(u.kinds) }}</td>{% if include_profiles %}<td></td><td></td>{% endif %}<td colspan="3"></td></tr>{% endfor %}
+  </tbody></table>
   {% endif %}
-  {% if s.relations %}<h4>İlişkiler</h4>
-  <table>{% for r in s.relations %}<tr><td style="width:50px">{{ conf_badge(r.confidence) }}</td><td class="mono">{{ r.text }}</td><td>{{ source_badges(r) }}</td><td>{{ check_text(r) }}</td></tr>{% endfor %}</table>{% endif %}
+  {% if s.relations %}<h4>İlişkiler</h4><table><tbody>{% for r in s.relations %}<tr><td style="width:48px">{{ conf_badge(r.confidence) }}</td><td class="mono">{{ r.text }}</td><td>{{ source_badges(r) }}</td><td>{{ check_text(r) }}</td></tr>{% endfor %}</tbody></table>{% endif %}
 </div>
 {% endfor %}
 
-<h2 id="mapping">3. Kolon eşleme matrisi</h2>
-<table>
-  <tr><th>Tablo</th><th>Kolon</th><th>Tip</th><th>Kullanım</th><th>Ekranlar</th><th>Durum</th><th>Hedef alan</th><th>Not</th></tr>
-  {% for r in mapping %}{% set st = r.ann.status or r.table_ann.status %}
-  <tr><td class="small">{{ table_label(r.col[:2]) }}</td><td class="mono"><b>{{ r.col[2] }}</b></td><td class="small">{{ r.info.type_label if r.info else '' }}</td>
-    <td>{{ usage_badges(r.kinds) }}</td><td class="small">{% for c in r.screens %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}</td>
-    <td>{{ status_badge(st) }}</td><td class="small"><b>{{ r.ann.target or '' }}</b></td><td class="small">{{ r.ann.note or '' }}</td></tr>
-  {% endfor %}
-</table>
+{% set n.i = n.i + 1 %}<h2 id="mapping"><span class="num">{{ n.i }}</span>Kolon eşleme matrisi</h2>
+<table><thead><tr><th>Tablo</th><th>Kolon</th><th>Tip</th><th>Kullanım</th><th>Ekranlar</th><th>Durum</th><th>Hedef alan</th><th>Not</th></tr></thead><tbody>
+{% for r in mapping %}<tr><td class="small">{{ table_label(r.col[:2]) }}</td><td class="mono"><b>{{ r.col[2] }}</b>{% if r.sensitive %}<span class="pii">KVKK</span>{% endif %}</td>
+  <td class="small">{{ r.info.type_label if r.info else '' }}</td><td>{{ usage_badges(r.kinds) }}</td><td class="small">{% for c in r.screens %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}</td>
+  <td>{{ st(r.ann.status or r.table_ann.status) }}</td><td class="small"><b>{{ r.ann.target or '' }}</b></td><td class="small">{{ r.ann.note or '' }}</td></tr>{% endfor %}
+</tbody></table>
 
-<h2 id="relations">4. İlişkiler ve ER diyagramı</h2>
-<p class="small muted">FK: veritabanı constraint'i · SQL: Siron'un çalıştırdığı SQL'lerdeki join · tahmin: kolon adı/tipi eşleşmesi.
-  Güven puanı 0-100; diyagramda 50 ve üstü gösterilir.</p>
-{% if er %}{{ er_legend() }}<div class="erwrap">{{ er_svg(er, false) }}</div>{% endif %}
-<table>
-  <tr><th>Güven</th><th>İlişki</th><th>Kaynak</th><th>Veri kontrolü</th></tr>
-  {% for r in relations %}<tr><td>{{ conf_badge(r.confidence) }}</td><td class="mono">{{ r.text }}</td><td>{{ source_badges(r) }}</td><td>{{ check_text(r) }}</td></tr>
-  {% else %}<tr><td colspan="4" class="muted">İlişki bulunamadı.</td></tr>{% endfor %}
-</table>
+{% set n.i = n.i + 1 %}<h2 id="relations"><span class="num">{{ n.i }}</span>İlişkiler ve ER diyagramı</h2>
+<p class="small muted">FK: veritabanı constraint'i · SQL: Siron'un çalıştırdığı sorgulardaki join · Tahmin: kolon adı/tipi eşleşmesi. Diyagramda güveni 50 ve üstü ilişkiler gösterilir.</p>
+{% if er %}<div class="legend" style="margin-bottom:8px"><span><i class="line" style="border-color:#475467"></i>Constraint</span><span><i class="line" style="border-color:#2a78d6;border-top-width:3px"></i>Siron SQL join</span><span><i class="line" style="border-color:#d97706;border-top-style:dashed"></i>Tahmin</span><span><i class="b-migrate"></i>Taşınacak</span><span><i class="b-review"></i>İncelenecek</span><span><i class="b-ignore"></i>Gereksiz</span></div>
+<div class="erwrap">{{ er_svg(er, false) }}</div>{% endif %}
+<table><thead><tr><th>Güven</th><th>İlişki</th><th>Kanıt</th><th>Veri kontrolü</th></tr></thead><tbody>
+{% for r in relations %}<tr><td>{{ conf_badge(r.confidence) }}</td><td class="mono">{{ r.text }}</td><td>{{ source_badges(r) }}</td><td>{{ check_text(r) }}</td></tr>{% else %}<tr><td colspan="4" class="muted">İlişki bulunamadı.</td></tr>{% endfor %}
+</tbody></table>
 
 {% if include_sql %}
-<h2 id="sql">5. SQL'ler</h2>
-{% for c, ca, stmts in screens %}
-<h3>{{ c.name }}</h3>
-{% for st, literal in stmts %}
-<div class="box">
-  <b class="mono">{{ st.sql_id }}</b> <span class="badge">{{ st.action or '' }}</span>
-  <span class="small muted">{{ st.exec_count }} çalışma · tablolar: {% for t in st.tables %}{{ table_label(t) }}{{ ', ' if not loop.last }}{% endfor %}</span>
-  <pre>{{ format_sql(st.sql_text) }}</pre>
-  {% if literal and literal != st.sql_text %}<h4>Bindleri yerleştirilmiş (ilk çalışma)</h4><pre>{{ format_sql(literal) }}</pre>{% endif %}
-</div>
-{% endfor %}
+{% set n.i = n.i + 1 %}<h2 id="sql"><span class="num">{{ n.i }}</span>SQL'ler</h2>
+{% for c, ca, stmts in screens %}<h3>{{ c.name }}</h3>
+{% for stm, literal in stmts %}<div class="box"><b class="mono">{{ stm.sql_id }}</b> <span class="badge">{{ stm.action or '' }}</span>
+  <span class="small muted">{{ stm.exec_count }} çalışma · {% for t in stm.tables %}{{ table_label(t) }}{{ ', ' if not loop.last }}{% endfor %}</span>
+  <pre>{{ format_sql(stm.sql_text) }}</pre>{% if literal and literal != stm.sql_text %}<h4>Bindleri yerleştirilmiş (ilk çalışma)</h4><pre>{{ format_sql(literal) }}</pre>{% endif %}</div>{% endfor %}
 {% endfor %}
 {% endif %}
 
 {% if snaps %}
-<h2 id="results">{{ 6 if include_sql else 5 }}. Sorgu sonuçları</h2>
-{% for s in snaps %}
-<div class="box">
-  <h3 style="margin-top:0">{{ s.title }}</h3>
-  <p class="small muted">{{ s.created_at[:16] }}{% if s.sql_id %} · {{ s.sql_id }}{% endif %}{% if s.note %} · {{ s.note }}{% endif %}
-    · {{ s.rows|length }} satır{% if s.truncated %} (ilk satırlar){% endif %}</p>
+{% set n.i = n.i + 1 %}<h2 id="results"><span class="num">{{ n.i }}</span>Sorgu sonuçları</h2>
+{% for s in snaps %}<div class="box"><h3>{{ s.title }}</h3>
+  <div class="small muted">{{ s.created_at[:16] }}{% if s.sql_id %} · {{ s.sql_id }}{% endif %}{% if s.note %} · {{ s.note }}{% endif %} · {{ s.rows|length }} satır{% if s.truncated %} (ilk satırlar){% endif %}{% if s.masked_cols %} · maskeli: {{ s.masked_cols|join(', ') }}{% endif %}</div>
   <pre>{{ format_sql(s.sql_text) }}</pre>
-  <div style="overflow:auto"><table>
-    <tr>{% for c in s.columns %}<th>{{ c }}{% if s.sources and s.sources[loop.index0] %}<span class="colsrc">{{ s.sources[loop.index0] }}</span>{% endif %}</th>{% endfor %}</tr>
-    {% for r in s.rows %}<tr>{% for v in r %}<td>{{ '' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}
-  </table></div>
-</div>
+  <div style="overflow:auto"><table><thead><tr>{% for c in s.columns %}<th>{{ c }}{% if s.sources and s.sources[loop.index0] %}<span class="colsrc">{{ s.sources[loop.index0] }}</span>{% endif %}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in s.rows %}<tr>{% for v in r %}<td>{{ '' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div></div>
 {% endfor %}
 {% endif %}
-<p class="meta" style="margin-top:40px">Siron SQL Tracer ile oluşturuldu.</p>
-</div></body></html>
+<div class="foot"><span>Siron SQL Tracer {{ app_version }}</span><span>{{ created }}</span></div>
+</div>
+</body></html>

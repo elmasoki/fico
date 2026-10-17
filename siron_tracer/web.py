@@ -6,16 +6,14 @@ from typing import Dict, Iterable, List, Optional
 from flask import abort, current_app
 
 from .analysis import CaptureAnalysis, ProjectAnalysis, analyse, analyse_project
-from .catalog import label
+from .catalog import ann, label
 from .layout import layout
 from .relations import Relation, build_relations
+from .privacy import MASK_MODES, Privacy, mask_rows
 from .sqlutil import build_slots, find_placeholders, parse_audit_binds, substitute_binds
 
 STATUSES = {"migrate": "Taşınacak", "review": "İncelenecek", "ignore": "Gereksiz"}
-
-
-def ann(annotations: dict, key, column: str = "") -> dict:
-    return annotations.get((key[0] or "", key[1], column), {})
+CAPTURE_KINDS = {"screen": "Ekran", "batch": "Batch / arka plan"}
 
 
 def parse_key(text: str):
@@ -34,14 +32,55 @@ def table_like(keys: Iterable) -> List:
     return [k for k in keys if k in catalog.tables or k not in catalog.objects]
 
 
+def ext() -> dict:
+    return current_app.extensions["siron"]
+
+
 def ctx():
-    ext = current_app.extensions["siron"]
-    return ext["settings"], ext["oracle"], ext["store"]
+    e = ext()
+    return e["settings"], e["oracle"], e["store"]
 
 
 def get_catalog():
     cat = ctx()[2].catalog()
     return cat if cat else None
+
+
+# --------------------------------------------------------------------------- users / schemas
+
+def known_users() -> List[str]:
+    """DB users offered when starting a capture: config first, then the saved list."""
+    settings, _, store = ctx()
+    return list(dict.fromkeys([settings.siron_db_user] + store.get_list("db_users")))
+
+
+def known_schemas() -> List[str]:
+    settings, _, store = ctx()
+    return list(dict.fromkeys(list(settings.schemas) + store.get_list("schemas")))
+
+
+def remember(kind: str, values: Iterable[str]):
+    """Add newly typed users / schemas to the saved lists."""
+    store = ctx()[2]
+    current = store.get_list(kind)
+    new = [v.strip().upper() for v in values if v and v.strip()]
+    if any(v not in current for v in new):
+        store.set_list(kind, current + new)
+
+
+def capture_schema(capture) -> str:
+    return (capture.get("schema_name") if capture else None) or ctx()[0].current_schema
+
+
+# --------------------------------------------------------------------------- analysis (cached)
+
+def _cache() -> dict:
+    return ext().setdefault("cache", {})
+
+
+def _version():
+    store = ctx()[2]
+    return (store.data_version, store.get_meta("catalog_version", ""))
 
 
 def capture_or_404(capture_id: int):
@@ -52,15 +91,30 @@ def capture_or_404(capture_id: int):
 
 
 def capture_analysis(capture, exclude_noise: bool = True) -> CaptureAnalysis:
-    settings, _, store = ctx()
-    noise = store.noise_sql_ids() if exclude_noise and not capture["is_noise"] else None
-    return analyse(store.records(capture["id"]), get_catalog(), settings.current_schema, noise)
+    store = ctx()[2]
+    key = ("capture", capture["id"], exclude_noise, _version())
+    cache = _cache()
+    if key not in cache:
+        noise = store.noise_sql_ids() if exclude_noise and not capture["is_noise"] else None
+        cache[key] = analyse(store.records(capture["id"]), get_catalog(), capture_schema(capture), noise)
+        _trim(cache)
+    return cache[key]
 
 
 def project_analysis() -> ProjectAnalysis:
     settings, _, store = ctx()
-    return analyse_project(store.list_captures(), store.records, get_catalog(),
-                           settings.current_schema, store.noise_sql_ids())
+    key = ("project", _version())
+    cache = _cache()
+    if key not in cache:
+        cache[key] = analyse_project(store.list_captures(), store.records, get_catalog(),
+                                     settings.current_schema, store.noise_sql_ids())
+        _trim(cache)
+    return cache[key]
+
+
+def _trim(cache: dict, limit: int = 64):
+    while len(cache) > limit:
+        cache.pop(next(iter(cache)))
 
 
 def relations_for(keys: Iterable, insights=(), other: Optional[Iterable] = None,
@@ -70,10 +124,60 @@ def relations_for(keys: Iterable, insights=(), other: Optional[Iterable] = None,
                            insights, store.relation_checks(), infer, min_confidence)
 
 
+def project_relations(min_confidence: int = 0) -> List[Relation]:
+    """Relations among all touched tables (cached until data or checks change)."""
+    store = ctx()[2]
+    key = ("rels", _version(), store.checks_version)
+    cache = _cache()
+    if key not in cache:
+        pa = project_analysis()
+        keys = table_like(pa.tables)
+        cache[key] = relations_for(keys, pa.insights) if keys else []
+        _trim(cache)
+    return [r for r in cache[key] if r.confidence >= min_confidence]
+
+
 def literal_for(sql_text: str, raw_binds: Optional[str]):
     placeholders = find_placeholders(sql_text)
     slots = build_slots(placeholders, parse_audit_binds(raw_binds))
     return substitute_binds(sql_text, placeholders, slots), slots
+
+
+# --------------------------------------------------------------------------- privacy
+
+def privacy() -> Privacy:
+    e = ext()
+    if "privacy" not in e:
+        e["privacy"] = Privacy(e["settings"].sensitive_pattern)
+    return e["privacy"]
+
+
+def is_sensitive(key, column: str, annotations: Optional[dict] = None) -> bool:
+    annotations = ctx()[2].annotations() if annotations is None else annotations
+    return privacy().is_sensitive(column, ann(annotations, key, column))
+
+
+def masked(columns, rows, sources, mode: Optional[str]):
+    """Apply the chosen mask mode to a result (sources: 'OWNER.TABLE.COLUMN' labels)."""
+    mode = mode or ctx()[0].mask_default
+    if mode not in MASK_MODES:
+        mode = "sensitive"
+    annotations = ctx()[2].annotations()
+
+    def ann_for(src: str):
+        parts = src.split(".")
+        key = (parts[0], parts[1]) if len(parts) == 3 else (None, parts[0])
+        return ann(annotations, key, parts[-1])
+
+    idx = privacy().mask_indexes(columns, sources, mode, ann_for)
+    return (mask_rows(rows, idx) if idx else list(rows)), idx, mode
+
+
+def log(action: str, detail: str = "", sql_text: Optional[str] = None, rows: Optional[int] = None):
+    try:
+        ctx()[2].log(action, detail, sql_text, rows)
+    except Exception:
+        pass
 
 
 # --------------------------------------------------------------------------- ER view
@@ -101,7 +205,7 @@ def er_view(keys: Iterable, relations: List[Relation], focus: Iterable = ()) -> 
         name = k[1]
         sizes[k] = (max(110, 7.4 * len(name) + 26), 42)
     pos, width, height = layout([(k, w, h) for k, (w, h) in sizes.items()],
-                                [(r.child, r.parent) for r in relations])
+                                [(r.child, r.parent) for r in relations], max_width=1080)
     nodes = []
     for k in keys:
         x, y = pos[k]

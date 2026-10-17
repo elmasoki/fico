@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, table_label, table_link, empty with context %}
+{% block page_title %}Taşıma paketi{% endblock %}
+{% block subtitle %}<p class="sub">"Taşınacak" işaretli tablolar, ilişkilere göre yükleme sırasına dizilir (önce üst tablolar). Paket olarak SQL betiklerini indirin ya da veriyi doğrudan CSV dosyalarına çıkarın.</p>{% endblock %}
+{% block actions %}
+  <a class="btn btn-secondary" href="{{ url_for('siron.migration_zip', mode=mode) }}">{{ icon('download') }}Paketi indir (.zip)</a>
+  <form method="post" action="{{ url_for('siron.migration_extract') }}" class="inline" onsubmit="return confirm('{{ steps|length }} tablo CSV dosyalarına çıkarılacak ({{ settings.export_dir }}). Devam?')">
+    <input type="hidden" name="mode" value="{{ mode }}"><button class="btn-primary" data-busy="Başlatılıyor" {% if not steps %}disabled{% endif %}>{{ icon('play') }}Veriyi çıkar</button></form>
+{% endblock %}
+{% block content %}
+<div class="mini-stats mb16">
+  <div class="mini-stat"><b>{{ steps|length }}</b><span>tablo</span></div>
+  <div class="mini-stat"><b>{{ steps|map(attribute='columns')|map('length')|sum }}</b><span>kolon</span></div>
+  <div class="mini-stat"><b>{{ total_rows|thousands }}</b><span>tahmini satır (istatistik)</span></div>
+  <div class="mini-stat"><b>{{ steps|selectattr('cycle')|list|length }}</b><span>döngüsel bağımlı</span></div>
+  <div class="mini-stat" style="flex:1"><span>Kolon seçimi</span>
+    <form method="get" class="mt8"><select name="mode" onchange="this.form.submit()">{% for k, v in modes.items() %}<option value="{{ k }}" {% if mode == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></form></div>
+</div>
+{% if steps %}
+<form method="post" class="card"><input type="hidden" name="action" value="filters"><input type="hidden" name="mode" value="{{ mode }}">
+  <div class="card-head"><h2>{{ icon('package') }}Yükleme sırası</h2><span class="meta">filtreler kaydedilir ve pakete yansır</span><div class="tools"><button class="btn-secondary btn-sm">{{ icon('check') }}Filtreleri kaydet</button></div></div>
+  <div class="table-wrap tall"><table>
+    <thead><tr><th class="tight">#</th><th>Tablo</th><th>Hedef</th><th class="num">Satır</th><th class="num">Kolon</th><th>Bağlı olduğu</th><th style="width:30%">Filtre (WHERE)</th></tr></thead><tbody>
+    {% for s in steps %}
+    <tr><td class="num"><b>{{ s.order }}</b></td>
+      <td>{{ table_link(s.key, 'cell-title') }}{% if s.cycle %}<span class="badge warn" title="Döngüsel bağımlılık: yüklemede kısıtları geçici kapatmak gerekebilir">döngü</span>{% endif %}
+        <span class="cell-sub mono" title="{{ s.columns|join(', ') }}">{{ s.columns[:6]|join(', ') }}{% if s.columns|length > 6 %} +{{ s.columns|length - 6 }}{% endif %}</span></td>
+      <td class="small"><b>{{ s.target or '' }}</b></td><td class="num small">{{ s.num_rows|thousands if s.num_rows is not none else '' }}</td><td class="num">{{ s.columns|length }}</td>
+      <td class="small">{% for p in s.parents %}<span class="badge">{{ p[1] }}</span>{% endfor %}</td>
+      <td><input type="text" class="mono" name="filter__{{ s.key[0] or '' }}__{{ s.key[1] }}" value="{{ s.filter or '' }}" placeholder="tüm satırlar"></td></tr>
+    {% endfor %}</tbody></table></div>
+</form>
+{% else %}
+<div class="card">{{ empty('package', 'Taşınacak işaretli tablo yok', '<span class="small"><a href="' ~ url_for('siron.tables') ~ '">Tablolar</a> sayfasında tabloları "Taşınacak" olarak işaretleyin.</span>') }}</div>
+{% endif %}
+<div class="grid g2">
+  <div class="card"><div class="card-head"><h2>{{ icon('file') }}Paket içeriği</h2></div><div class="card-body"><dl class="kv">
+    <dt class="mono">manifest.csv</dt><dd>Sıra, tablo, hedef, filtre, tahmini satır, bağımlılık</dd>
+    <dt class="mono">sql/NN_TABLO.sql</dt><dd>Her tablo için veri çekme sorgusu</dd>
+    <dt class="mono">extract_sqlplus.sql</dt><dd>SQL*Plus / SQLcl ile tümünü CSV'ye spool eder</dd>
+    <dt class="mono">counts.sql</dt><dd>Kaynak satır sayıları (mutabakat)</dd>
+    <dt class="mono">kolon_esleme.csv</dt><dd>Kolon eşleme matrisi</dd></dl></div></div>
+  <div class="card"><div class="card-head"><h2>{{ icon('clock') }}Önceki çıkarmalar</h2></div>
+    {% if runs %}<ul class="list">{% for j in runs[:8] %}<li><span class="grow"><a class="t" href="{{ url_for('siron.job', job_id=j.id) }}">{{ j.title }}</a><span class="s">{{ j.created_at|short_ts }} · {{ j.message or '' }}</span></span>
+      {% if j.status == 'done' %}<span class="badge ok">Tamam</span>{% elif j.status == 'running' %}<span class="badge info">%{{ j.progress }}</span>{% else %}<span class="badge err">{{ j.status }}</span>{% endif %}</li>{% endfor %}</ul>
+    {% else %}<p class="muted small p16 mb0">Henüz veri çıkarılmadı.</p>{% endif %}</div>
+</div>
+{% endblock %}

@@ -1,17 +1,23 @@
-"""Local SQLite store: captures (one per Siron screen/action), the audit records
-copied for each capture and a cache of the Siron object catalogue.
+"""Local SQLite store.
 
-Records are copied so the analysis keeps working after the Oracle audit
-trail has been purged."""
+Holds everything the tool learns so the analysis keeps working after the
+Oracle audit trail has been purged: captures and their audit records, the
+data dictionary, annotations (mapping decisions), column profiles, the screen
+inventory, background jobs, saved result snapshots and an activity log.
+
+Older database files are upgraded in place (missing columns are added)."""
 from __future__ import annotations
 
+import getpass
 import json
 import os
+import socket
 import sqlite3
+import threading
 from datetime import datetime
-from typing import Iterable, List, Optional, Set, Tuple
+from typing import Dict, Iterable, List, Optional, Set, Tuple
 
-from .catalog import Catalog, Column, Constraint, Table
+from .catalog import Catalog, Column, Constraint, Dependency, Table
 from .sources import RECORD_FIELDS
 
 SCHEMA = """
@@ -42,9 +48,7 @@ CREATE TABLE IF NOT EXISTS records (
 );
 CREATE INDEX IF NOT EXISTS records_capture ON records(capture_id, sql_id);
 CREATE TABLE IF NOT EXISTS objects (
-    owner TEXT NOT NULL,
-    name  TEXT NOT NULL,
-    type  TEXT NOT NULL,
+    owner TEXT NOT NULL, name TEXT NOT NULL, type TEXT NOT NULL,
     PRIMARY KEY (owner, name, type)
 );
 CREATE TABLE IF NOT EXISTS cat_tables (
@@ -62,6 +66,10 @@ CREATE TABLE IF NOT EXISTS cat_constraints (
     r_owner TEXT, r_name TEXT, columns TEXT,
     PRIMARY KEY (owner, name)
 );
+CREATE TABLE IF NOT EXISTS cat_dependencies (
+    owner TEXT NOT NULL, name TEXT NOT NULL, type TEXT,
+    ref_owner TEXT, ref_name TEXT NOT NULL, ref_type TEXT
+);
 CREATE TABLE IF NOT EXISTS annotations (
     owner TEXT NOT NULL, table_name TEXT NOT NULL, column_name TEXT NOT NULL DEFAULT '',
     status TEXT, note TEXT, target TEXT, updated_at TEXT,
@@ -76,10 +84,42 @@ CREATE TABLE IF NOT EXISTS snapshots (
 CREATE TABLE IF NOT EXISTS relation_checks (
     relation_id TEXT PRIMARY KEY, matched INTEGER, total INTEGER, checked_at TEXT
 );
+CREATE TABLE IF NOT EXISTS screens (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    module TEXT, name TEXT NOT NULL, description TEXT, priority TEXT,
+    status TEXT NOT NULL DEFAULT 'todo', notes TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS profiles (
+    owner TEXT NOT NULL, table_name TEXT NOT NULL, column_name TEXT NOT NULL,
+    data TEXT NOT NULL, profiled_at TEXT NOT NULL,
+    PRIMARY KEY (owner, table_name, column_name)
+);
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL, title TEXT NOT NULL, params TEXT,
+    status TEXT NOT NULL DEFAULT 'queued', progress INTEGER NOT NULL DEFAULT 0,
+    message TEXT, result TEXT, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT
+);
+CREATE TABLE IF NOT EXISTS activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL, os_user TEXT, host TEXT, action TEXT NOT NULL,
+    detail TEXT, sql_text TEXT, rows INTEGER
+);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 """ % ",\n    ".join("%s TEXT" % f for f in RECORD_FIELDS)
 
+# columns added after the first release: (table, column, definition)
+MIGRATIONS = [
+    ("captures", "db_users", "TEXT"),
+    ("captures", "schema_name", "TEXT"),
+    ("captures", "kind", "TEXT NOT NULL DEFAULT 'screen'"),
+    ("captures", "screen_id", "INTEGER"),
+    ("annotations", "sensitive", "INTEGER"),
+    ("annotations", "extract_filter", "TEXT"),
+]
+
 TS_FMT = "%Y-%m-%d %H:%M:%S.%f"
+_KEEP = object()
 
 
 def parse_ts(value: Optional[str]) -> Optional[datetime]:
@@ -90,86 +130,109 @@ def fmt_ts(value: datetime) -> str:
     return value.strftime(TS_FMT)
 
 
+def now() -> str:
+    return fmt_ts(datetime.now())
+
+
 class Store:
     def __init__(self, path: str):
         self.path = path
         self._catalog: Optional[Catalog] = None
+        self._lock = threading.RLock()
+        self.data_version = 0    # bumped on every change that affects the analysis
+        self.checks_version = 0  # bumped when a relation data check is stored
         if path != ":memory:":
             os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         self._memory = sqlite3.connect(":memory:", check_same_thread=False) if path == ":memory:" else None
         with self._conn() as db:
             db.executescript(SCHEMA)
+            for table, column, definition in MIGRATIONS:
+                existing = {r[1] for r in db.execute("PRAGMA table_info(%s)" % table)}
+                if column not in existing:
+                    db.execute("ALTER TABLE %s ADD COLUMN %s %s" % (table, column, definition))
+            if self._memory is None:
+                db.execute("PRAGMA journal_mode = WAL")
 
     def _conn(self) -> sqlite3.Connection:
-        db = self._memory or sqlite3.connect(self.path)
+        db = self._memory or sqlite3.connect(self.path, timeout=30)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys = ON")
         return db
 
+    def _bump(self):
+        self.data_version += 1
+
     # ------------------------------------------------------------------ captures
-    def create_capture(self, name, source, db_user, start_utc, start_local, notes=None,
+    def create_capture(self, name, source, db_users, start_utc, start_local, notes=None,
                        os_user=None, host=None, program=None, client_id=None,
-                       end_utc=None, end_local=None, status="recording") -> int:
-        with self._conn() as db:
+                       end_utc=None, end_local=None, status="recording", schema=None,
+                       kind="screen", screen_id=None) -> int:
+        if isinstance(db_users, str):
+            db_users = [db_users]
+        db_users = [u.strip().upper() for u in db_users if u and u.strip()]
+        with self._lock, self._conn() as db:
             cur = db.execute(
-                "INSERT INTO captures (name, notes, source, db_user, os_user, host, program, "
-                "client_id, start_utc, end_utc, start_local, end_local, status, created_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (name, notes, source, db_user, os_user or None, host or None, program or None,
-                 client_id or None, fmt_ts(start_utc), end_utc and fmt_ts(end_utc),
-                 fmt_ts(start_local), end_local and fmt_ts(end_local), status,
-                 fmt_ts(datetime.now())))
+                "INSERT INTO captures (name, notes, source, db_user, db_users, schema_name, kind, screen_id, "
+                "os_user, host, program, client_id, start_utc, end_utc, start_local, end_local, status, "
+                "created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (name, notes, source, db_users[0] if db_users else "", ",".join(db_users),
+                 (schema or "").upper() or None, kind or "screen", screen_id or None,
+                 os_user or None, host or None, program or None, client_id or None,
+                 fmt_ts(start_utc), end_utc and fmt_ts(end_utc), fmt_ts(start_local),
+                 end_local and fmt_ts(end_local), status, now()))
+            self._bump()
             return cur.lastrowid
 
-    def get_capture(self, capture_id: int) -> Optional[sqlite3.Row]:
+    def get_capture(self, capture_id: int) -> Optional[dict]:
         with self._conn() as db:
-            return db.execute("SELECT * FROM captures WHERE id = ?", (capture_id,)).fetchone()
+            row = db.execute("SELECT * FROM captures WHERE id = ?", (capture_id,)).fetchone()
+            return _capture(row) if row else None
 
-    def list_captures(self) -> List[sqlite3.Row]:
+    def list_captures(self) -> List[dict]:
         with self._conn() as db:
-            return db.execute("SELECT * FROM captures ORDER BY id DESC").fetchall()
+            return [_capture(r) for r in db.execute("SELECT * FROM captures ORDER BY id DESC")]
 
     def finish_capture(self, capture_id: int, end_utc: datetime, end_local: datetime):
-        with self._conn() as db:
+        with self._lock, self._conn() as db:
             db.execute("UPDATE captures SET end_utc = ?, end_local = ?, status = 'done' WHERE id = ?",
                        (fmt_ts(end_utc), fmt_ts(end_local), capture_id))
+            self._bump()
 
     def update_capture(self, capture_id: int, **fields):
-        allowed = {"name", "notes", "is_noise", "message"}
+        allowed = {"name", "notes", "is_noise", "message", "kind", "screen_id", "schema_name"}
         cols = [k for k in fields if k in allowed]
         if not cols:
             return
-        with self._conn() as db:
+        with self._lock, self._conn() as db:
             db.execute("UPDATE captures SET %s WHERE id = ?" % ", ".join("%s = ?" % c for c in cols),
                        [fields[c] for c in cols] + [capture_id])
+            self._bump()
 
     def delete_capture(self, capture_id: int):
-        with self._conn() as db:
+        with self._lock, self._conn() as db:
             db.execute("DELETE FROM records WHERE capture_id = ?", (capture_id,))
             db.execute("DELETE FROM captures WHERE id = ?", (capture_id,))
+            db.execute("UPDATE snapshots SET capture_id = NULL WHERE capture_id = ?", (capture_id,))
+            self._bump()
 
     # ------------------------------------------------------------------ records
     def replace_records(self, capture_id: int, records: Iterable[dict]):
         records = list(records)
         cols = ", ".join(RECORD_FIELDS)
         marks = ", ".join("?" for _ in RECORD_FIELDS)
-        with self._conn() as db:
+        with self._lock, self._conn() as db:
             db.execute("DELETE FROM records WHERE capture_id = ?", (capture_id,))
             db.executemany(
                 "INSERT INTO records (capture_id, %s) VALUES (?, %s)" % (cols, marks),
                 [[capture_id] + [r.get(f) for f in RECORD_FIELDS] for r in records])
             db.execute("UPDATE captures SET record_count = ? WHERE id = ?", (len(records), capture_id))
+            self._bump()
 
     def records(self, capture_id: int) -> List[dict]:
         with self._conn() as db:
             rows = db.execute("SELECT * FROM records WHERE capture_id = ? ORDER BY ts, id",
                               (capture_id,)).fetchall()
             return [dict(r) for r in rows]
-
-    def record(self, record_id: int) -> Optional[dict]:
-        with self._conn() as db:
-            row = db.execute("SELECT * FROM records WHERE id = ?", (record_id,)).fetchone()
-            return dict(row) if row else None
 
     def search_sql(self, text: str, limit: int = 100) -> List[dict]:
         with self._conn() as db:
@@ -187,31 +250,32 @@ class Store:
                 "WHERE c.is_noise = 1 AND r.sql_id IS NOT NULL").fetchall()
             return {r[0] for r in rows}
 
-    # ------------------------------------------------------------------ objects
-    def objects(self) -> dict:
-        """{(owner, name): type}"""
-        with self._conn() as db:
-            return {(r["owner"], r["name"]): r["type"]
-                    for r in db.execute("SELECT owner, name, type FROM objects")}
-
-    # ------------------------------------------------------------------ meta
+    # ------------------------------------------------------------------ meta / settings
     def get_meta(self, key: str, default: Optional[str] = None) -> Optional[str]:
         with self._conn() as db:
             row = db.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
             return row[0] if row else default
 
     def set_meta(self, key: str, value: str):
-        with self._conn() as db:
+        with self._lock, self._conn() as db:
             db.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
+
+    def get_list(self, key: str) -> List[str]:
+        return json.loads(self.get_meta("list:" + key, "[]"))
+
+    def set_list(self, key: str, values: Iterable[str]):
+        clean = list(dict.fromkeys(v.strip().upper() for v in values if v and v.strip()))
+        self.set_meta("list:" + key, json.dumps(clean))
 
     # ------------------------------------------------------------------ catalogue
     def replace_catalog(self, data: dict):
-        """data: objects, tables, columns, constraints, cons_columns (lists of tuples)."""
+        """data: objects, tables, columns, constraints, cons_columns, dependencies (tuples)."""
         cols_by_cons = {}
-        for owner, cname, column, position in sorted(data.get("cons_columns", []), key=lambda r: (r[0], r[1], r[3] or 0)):
+        for owner, cname, column, position in sorted(data.get("cons_columns", []),
+                                                     key=lambda r: (r[0], r[1], r[3] or 0)):
             cols_by_cons.setdefault((owner, cname), []).append(column)
-        with self._conn() as db:
-            for table in ("objects", "cat_tables", "cat_columns", "cat_constraints"):
+        with self._lock, self._conn() as db:
+            for table in ("objects", "cat_tables", "cat_columns", "cat_constraints", "cat_dependencies"):
                 db.execute("DELETE FROM %s" % table)
             db.executemany("INSERT OR IGNORE INTO objects (owner, name, type) VALUES (?,?,?)",
                            data.get("objects", []))
@@ -222,8 +286,10 @@ class Store:
                 "INSERT OR IGNORE INTO cat_constraints VALUES (?,?,?,?,?,?,?)",
                 [tuple(c[:6]) + (",".join(cols_by_cons.get((c[0], c[1]), [])),)
                  for c in data.get("constraints", [])])
-        self.set_meta("catalog_version", fmt_ts(datetime.now()))
+            db.executemany("INSERT INTO cat_dependencies VALUES (?,?,?,?,?,?)", data.get("dependencies", []))
+        self.set_meta("catalog_version", now())
         self._catalog = None
+        self._bump()
 
     def catalog(self) -> Catalog:
         version = self.get_meta("catalog_version", "")
@@ -242,7 +308,9 @@ class Store:
             constraints = [Constraint(r["owner"], r["name"], r["type"], r["table_name"], r["r_owner"],
                                       r["r_name"], tuple(c for c in (r["columns"] or "").split(",") if c))
                            for r in db.execute("SELECT * FROM cat_constraints")]
-        self._catalog = Catalog(tables, objects, constraints, version)
+            deps = [Dependency(r["owner"], r["name"], r["type"], r["ref_owner"], r["ref_name"], r["ref_type"])
+                    for r in db.execute("SELECT * FROM cat_dependencies")]
+        self._catalog = Catalog(tables, objects, constraints, version, deps)
         return self._catalog
 
     # ------------------------------------------------------------------ annotations
@@ -252,27 +320,107 @@ class Store:
             return {(r["owner"], r["table_name"], r["column_name"]): dict(r)
                     for r in db.execute("SELECT * FROM annotations")}
 
-    def save_annotation(self, owner, table, column, status, note, target=None):
+    def save_annotation(self, owner, table, column, status=_KEEP, note=_KEEP, target=_KEEP,
+                        sensitive=_KEEP, extract_filter=_KEEP):
+        """Upsert; fields left at their default keep their stored value."""
         owner, column = owner or "", column or ""
-        with self._conn() as db:
-            if not (status or note or target):
-                db.execute("DELETE FROM annotations WHERE owner = ? AND table_name = ? AND column_name = ?",
-                           (owner, table, column))
+        key = (owner, table, column)
+        with self._lock, self._conn() as db:
+            row = db.execute("SELECT * FROM annotations WHERE owner = ? AND table_name = ? AND column_name = ?",
+                             key).fetchone()
+            cur = dict(row) if row else {}
+            values = {}
+            for name, value in (("status", status), ("note", note), ("target", target),
+                                ("sensitive", sensitive), ("extract_filter", extract_filter)):
+                values[name] = cur.get(name) if value is _KEEP else value
+            for name in ("status", "note", "target", "extract_filter"):
+                values[name] = (values[name] or "").strip() or None
+            if values["sensitive"] in ("", None):
+                values["sensitive"] = None
             else:
-                db.execute("INSERT OR REPLACE INTO annotations VALUES (?,?,?,?,?,?,?)",
-                           (owner, table, column, status or None, note or None, target or None,
-                            fmt_ts(datetime.now())))
+                values["sensitive"] = 1 if str(values["sensitive"]) in ("1", "True", "true") else 0
+            if all(v is None for v in values.values()):
+                db.execute("DELETE FROM annotations WHERE owner = ? AND table_name = ? AND column_name = ?", key)
+                return
+            db.execute("INSERT OR REPLACE INTO annotations (owner, table_name, column_name, status, note, target, "
+                       "updated_at, sensitive, extract_filter) VALUES (?,?,?,?,?,?,?,?,?)",
+                       key + (values["status"], values["note"], values["target"], now(),
+                              values["sensitive"], values["extract_filter"]))
+
+    def replace_annotations(self, rows: List[dict]):
+        """Restore a full annotation backup (used to undo an Excel import)."""
+        with self._lock, self._conn() as db:
+            db.execute("DELETE FROM annotations")
+            for r in rows:
+                db.execute("INSERT INTO annotations (owner, table_name, column_name, status, note, target, "
+                           "updated_at, sensitive, extract_filter) VALUES (?,?,?,?,?,?,?,?,?)",
+                           (r["owner"], r["table_name"], r["column_name"], r.get("status"), r.get("note"),
+                            r.get("target"), r.get("updated_at"), r.get("sensitive"), r.get("extract_filter")))
+
+    # ------------------------------------------------------------------ screen inventory
+    def list_screens(self) -> List[dict]:
+        with self._conn() as db:
+            return [dict(r) for r in db.execute("SELECT * FROM screens ORDER BY module, name")]
+
+    def get_screen(self, screen_id: int) -> Optional[dict]:
+        with self._conn() as db:
+            row = db.execute("SELECT * FROM screens WHERE id = ?", (screen_id,)).fetchone()
+            return dict(row) if row else None
+
+    def add_screen(self, name, module=None, description=None, priority=None, status="todo", notes=None) -> int:
+        with self._lock, self._conn() as db:
+            existing = db.execute("SELECT id FROM screens WHERE IFNULL(module,'') = ? AND name = ?",
+                                  (module or "", name)).fetchone()
+            if existing:
+                return existing[0]
+            cur = db.execute("INSERT INTO screens (module, name, description, priority, status, notes, created_at) "
+                             "VALUES (?,?,?,?,?,?,?)", (module or None, name, description or None,
+                                                         priority or None, status or "todo", notes or None, now()))
+            return cur.lastrowid
+
+    def update_screen(self, screen_id: int, **fields):
+        allowed = {"module", "name", "description", "priority", "status", "notes"}
+        cols = [k for k in fields if k in allowed]
+        if cols:
+            with self._lock, self._conn() as db:
+                db.execute("UPDATE screens SET %s WHERE id = ?" % ", ".join("%s = ?" % c for c in cols),
+                           [fields[c] or None for c in cols] + [screen_id])
+
+    def delete_screen(self, screen_id: int):
+        with self._lock, self._conn() as db:
+            db.execute("UPDATE captures SET screen_id = NULL WHERE screen_id = ?", (screen_id,))
+            db.execute("DELETE FROM screens WHERE id = ?", (screen_id,))
+            self._bump()
+
+    # ------------------------------------------------------------------ profiles
+    def save_profile(self, owner: str, table: str, column: str, data: dict):
+        with self._lock, self._conn() as db:
+            db.execute("INSERT OR REPLACE INTO profiles VALUES (?,?,?,?,?)",
+                       (owner or "", table, column, json.dumps(data, default=str), now()))
+
+    def profiles(self, key: Optional[Tuple[Optional[str], str]] = None) -> Dict[Tuple, dict]:
+        """{(owner, table, column): data (+ 'profiled_at')}"""
+        sql, args = "SELECT * FROM profiles", ()
+        if key:
+            sql, args = sql + " WHERE owner = ? AND table_name = ?", (key[0] or "", key[1])
+        with self._conn() as db:
+            out = {}
+            for r in db.execute(sql, args):
+                d = json.loads(r["data"])
+                d["profiled_at"] = r["profiled_at"]
+                out[(r["owner"] or None, r["table_name"], r["column_name"])] = d
+            return out
 
     # ------------------------------------------------------------------ snapshots
     def add_snapshot(self, title, sql_text, columns, rows, truncated=False, capture_id=None,
                      sql_id=None, note=None, sources=None) -> int:
-        with self._conn() as db:
+        with self._lock, self._conn() as db:
             cur = db.execute(
                 "INSERT INTO snapshots (capture_id, sql_id, title, note, sql_text, columns, rows, sources, "
                 "truncated, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (capture_id, sql_id, title, note, sql_text, json.dumps(list(columns)),
                  json.dumps([list(r) for r in rows], default=str), json.dumps(sources or []),
-                 1 if truncated else 0, fmt_ts(datetime.now())))
+                 1 if truncated else 0, now()))
             return cur.lastrowid
 
     def snapshots(self, capture_id: Optional[int] = None) -> List[dict]:
@@ -292,7 +440,7 @@ class Store:
             return out
 
     def delete_snapshot(self, snapshot_id: int):
-        with self._conn() as db:
+        with self._lock, self._conn() as db:
             db.execute("DELETE FROM snapshots WHERE id = ?", (snapshot_id,))
 
     # ------------------------------------------------------------------ relation checks
@@ -301,6 +449,74 @@ class Store:
             return {r[0]: (r[1], r[2]) for r in db.execute("SELECT relation_id, matched, total FROM relation_checks")}
 
     def save_relation_check(self, relation_id: str, matched: int, total: int):
-        with self._conn() as db:
+        with self._lock, self._conn() as db:
             db.execute("INSERT OR REPLACE INTO relation_checks VALUES (?,?,?,?)",
-                       (relation_id, matched, total, fmt_ts(datetime.now())))
+                       (relation_id, matched, total, now()))
+            self.checks_version += 1
+
+    # ------------------------------------------------------------------ jobs
+    def create_job(self, kind: str, title: str, params: Optional[dict] = None) -> int:
+        with self._lock, self._conn() as db:
+            cur = db.execute("INSERT INTO jobs (kind, title, params, created_at) VALUES (?,?,?,?)",
+                             (kind, title, json.dumps(params or {}, default=str), now()))
+            return cur.lastrowid
+
+    def update_job(self, job_id: int, **fields):
+        allowed = {"status", "progress", "message", "result", "started_at", "finished_at"}
+        if "result" in fields and not isinstance(fields["result"], str):
+            fields["result"] = json.dumps(fields["result"], default=str)
+        cols = [k for k in fields if k in allowed]
+        with self._lock, self._conn() as db:
+            db.execute("UPDATE jobs SET %s WHERE id = ?" % ", ".join("%s = ?" % c for c in cols),
+                       [fields[c] for c in cols] + [job_id])
+
+    def get_job(self, job_id: int) -> Optional[dict]:
+        with self._conn() as db:
+            row = db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            return _job(row) if row else None
+
+    def list_jobs(self, limit: int = 100, kind: Optional[str] = None) -> List[dict]:
+        sql, args = "SELECT * FROM jobs", []
+        if kind:
+            sql += " WHERE kind = ?"
+            args.append(kind)
+        with self._conn() as db:
+            return [_job(r) for r in db.execute(sql + " ORDER BY id DESC LIMIT ?", args + [limit])]
+
+    def fail_stale_jobs(self):
+        """Jobs left running by a previous process cannot finish any more."""
+        with self._lock, self._conn() as db:
+            db.execute("UPDATE jobs SET status = 'failed', message = 'Uygulama yeniden başlatıldı' "
+                       "WHERE status IN ('queued', 'running')")
+
+    # ------------------------------------------------------------------ activity log
+    def log(self, action: str, detail: str = "", sql_text: Optional[str] = None, rows: Optional[int] = None):
+        try:
+            user = getpass.getuser()
+        except Exception:
+            user = None
+        with self._lock, self._conn() as db:
+            db.execute("INSERT INTO activity (ts, os_user, host, action, detail, sql_text, rows) VALUES (?,?,?,?,?,?,?)",
+                       (now(), user, socket.gethostname(), action, detail, sql_text, rows))
+
+    def activity(self, limit: int = 500, action: Optional[str] = None) -> List[dict]:
+        sql, args = "SELECT * FROM activity", []
+        if action:
+            sql += " WHERE action = ?"
+            args.append(action)
+        with self._conn() as db:
+            return [dict(r) for r in db.execute(sql + " ORDER BY id DESC LIMIT ?", args + [limit])]
+
+
+def _capture(row) -> dict:
+    d = dict(row)
+    d["db_users"] = [u for u in (d.get("db_users") or d.get("db_user") or "").split(",") if u]
+    d["kind"] = d.get("kind") or "screen"
+    return d
+
+
+def _job(row) -> dict:
+    d = dict(row)
+    d["params"] = json.loads(d["params"] or "{}")
+    d["result"] = json.loads(d["result"]) if d.get("result") else None
+    return d

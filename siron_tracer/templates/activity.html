@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty with context %}
+{% block page_title %}Etkinlik günlüğü{% endblock %}
+{% block subtitle %}<p class="sub">Çalıştırılan sorgular, dışa aktarımlar, raporlar ve içe aktarmalar — kim, ne zaman, kaç satır. KVKK / denetim için CSV olarak alınabilir.</p>{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ url_for('siron.activity', action=action, format='csv') }}">{{ icon('download') }}CSV</a>{% endblock %}
+{% block content %}
+<div class="card">
+  <form class="filters" method="get"><div class="field"><label class="lbl">İşlem</label><select name="action" onchange="this.form.submit()"><option value="">Hepsi</option>
+    {% for k, v in actions.items() %}<option value="{{ k }}" {% if action == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+    <span class="spacer"></span><span class="small muted">{{ rows|length }} kayıt (en fazla 1000)</span></form>
+  {% if rows %}
+  <div class="table-wrap tall"><table>
+    <thead><tr><th>Zaman</th><th>Kullanıcı</th><th>İşlem</th><th>Detay</th><th class="num">Satır</th></tr></thead><tbody>
+    {% for r in rows %}<tr><td class="small nowrap mono">{{ r.ts[:19] }}</td><td class="small nowrap">{{ r.os_user or '' }}<span class="cell-sub">{{ r.host or '' }}</span></td>
+      <td class="nowrap"><span class="badge">{{ actions.get(r.action, r.action) }}</span></td>
+      <td class="small">{{ r.detail or '' }}{% if r.sql_text %}<details><summary class="xs muted" style="cursor:pointer">SQL</summary><pre class="xs">{{ r.sql_text }}</pre></details>{% endif %}</td>
+      <td class="num">{{ r.rows|thousands if r.rows is not none else '' }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}{{ empty('activity', 'Kayıt yok') }}{% endif %}
+</div>
+{% endblock %}

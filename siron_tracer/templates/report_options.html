@@ -1,19 +1,41 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon with context %}
+{% block page_title %}Raporlar{% endblock %}
+{% block subtitle %}<p class="sub">Tek dosyalık HTML rapor (dış bağlantı yok): tarayıcıda açılır, PDF'e yazdırılabilir, e-postayla paylaşılabilir.</p>{% endblock %}
 {% block content %}
-<h1>Raporlar</h1>
+<div class="grid g-main">
 <form class="card" method="get" action="{{ url_for('siron.report') }}" target="_blank">
-  <p class="small muted">Rapor tek bir HTML dosyasıdır (dış bağlantı yok); tarayıcıda açılır, yazdırılabilir / PDF'e çevrilebilir, e-postayla paylaşılabilir.
-    İçerik: ekran envanteri, tablo ve kolon kullanımı, veri sözlüğü, notlar, kolon eşleme matrisi, ilişkiler ve ER diyagramı, SQL'ler ve rapora eklenen sonuçlar.</p>
-  <label>Kapsam</label>
-  <select name="capture"><option value="">Tüm ekranlar (proje raporu)</option>
-    {% for c in captures %}<option value="{{ c.id }}">Ekran: {{ c.name }}</option>{% endfor %}</select>
-  <label>Kolonlar</label>
-  <select name="cols"><option value="used">Sadece kullanılan / not eklenmiş kolonlar</option><option value="all">Tablonun tüm kolonları (veri sözlüğü)</option></select>
-  <label><input type="checkbox" name="sql" value="1" checked> SQL'leri ekle (bindleri yerleştirilmiş haliyle)</label>
-  <label><input type="checkbox" name="snapshots" value="1" checked> Rapora eklenen sorgu sonuçlarını ekle
-    (<a href="{{ url_for('siron.snapshots') }}">listeyi gör</a>)</label>
-  <label><input type="checkbox" name="mask" value="1"> Sonuç verilerini maskele (kişisel veri paylaşılacaksa önerilir)</label>
-  <input type="hidden" name="sql" value="0"><input type="hidden" name="snapshots" value="0">
-  <div class="toolbar"><button>Raporu aç</button><button name="download" value="1" class="secondary">HTML olarak indir</button></div>
+  <div class="card-head"><h2>{{ icon('file') }}Rapor seçenekleri</h2></div>
+  <div class="card-body">
+    <div class="field"><label>Kapsam</label>
+      <select name="capture"><option value="">Tüm ekranlar — proje veri eşleme raporu</option>{% for c in captures %}<option value="{{ c.id }}">Ekran: {{ c.name }}</option>{% endfor %}</select></div>
+    <div class="row">
+      <div class="field"><label>Kolonlar</label><select name="cols"><option value="used">Kullanılan ve not alınan kolonlar</option><option value="all">Tüm kolonlar (tam veri sözlüğü)</option></select></div>
+      <div class="field"><label>Veri maskeleme</label><select name="mask">{% for k, v in MASK_MODES.items() %}<option value="{{ k }}" {% if k == settings.mask_default %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+    </div>
+    <label class="check"><input type="checkbox" name="sql" value="1" checked><span>SQL'ler<small>Biçimlendirilmiş SQL ve bindleri yerleştirilmiş hali</small></span></label>
+    <label class="check"><input type="checkbox" name="profiles" value="1" checked><span>Veri profilleri<small>Doluluk, farklı değer, örnek değerler (hassas olanlar maskeli)</small></span></label>
+    <label class="check"><input type="checkbox" name="snapshots" value="1" checked><span>Kayıtlı sorgu sonuçları <a href="{{ url_for('siron.snapshots') }}">(listeyi gör)</a></span></label>
+    <input type="hidden" name="sql" value="0"><input type="hidden" name="snapshots" value="0"><input type="hidden" name="profiles" value="0">
+  </div>
+  <div class="card-foot"><button class="btn-primary">{{ icon('ext') }}Raporu aç</button><button name="download" value="1" class="btn-secondary">{{ icon('download') }}HTML indir</button></div>
 </form>
+<div class="card">
+  <div class="card-head"><h2>{{ icon('layers') }}Rapor içeriği</h2></div>
+  <div class="card-body"><ol class="steps">
+    <li><b>Yönetici özeti</b> — kapsam, karar ve doğrulama oranları</li>
+    <li><b>Ekranlar</b> — her ekranın tabloları, kolonları, SQL'leri</li>
+    <li><b>Tablolar ve kolonlar</b> — veri sözlüğü, kullanım, profil, kararlar</li>
+    <li><b>Kolon eşleme matrisi</b> — kaynak → hedef</li>
+    <li><b>İlişkiler ve ER diyagramı</b></li>
+    <li><b>SQL'ler ve sorgu sonuçları</b></li>
+  </ol>
+  <p class="small muted mb0">Raporu oluşturma ve indirme etkinlik günlüğüne kaydedilir.</p></div>
+</div>
+</div>
+<div class="grid g3">
+  <a class="card kpi" href="{{ url_for('siron.mapping_xlsx') }}" style="text-decoration:none"><div class="k-label">{{ icon('sheet') }}Excel eşleme çalışma kitabı</div><div class="k-sub mt8">Analistlerin dolduracağı, geri yüklenebilir .xlsx</div></a>
+  <a class="card kpi" href="{{ url_for('siron.mapping_csv') }}" style="text-decoration:none"><div class="k-label">{{ icon('download') }}Kolon eşleme CSV</div><div class="k-sub mt8">Düz liste, Excel uyumlu (UTF-8, ;)</div></a>
+  <a class="card kpi" href="{{ url_for('siron.migration') }}" style="text-decoration:none"><div class="k-label">{{ icon('package') }}Taşıma paketi</div><div class="k-sub mt8">Yükleme sırası, SQL betikleri, veri çıkarma</div></a>
+</div>
 {% endblock %}

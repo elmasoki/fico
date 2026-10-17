@@ -1,89 +1,114 @@
 {% extends "base.html" %}
-{% from "_macros.html" import table_label, results_table, usage_badges, status_badge, relation_rows, col_link with context %}
-{% block title %}{{ key[1] }} - Siron SQL Tracer{% endblock %}
-{% block content %}
-{% set a = ann(annotations, key) %}
-<h1>{{ table_label(key) }} {{ status_badge(a.status) }}</h1>
-<div class="card">
-  {% if info %}
-  <div class="stats">
-    <div class="stat"><b>{{ info.obj_type }}</b><span>tip</span></div>
-    <div class="stat"><b>{{ info.num_rows|thousands if info.num_rows is not none else '?' }}</b><span>satır (istatistik{% if info.last_analyzed %}, {{ info.last_analyzed[:10] }}{% endif %})</span></div>
-    <div class="stat"><b>{{ info.columns|length }}</b><span>kolon</span></div>
-    <div class="stat"><b>{{ col_usage|length }}</b><span>ekranlarda kullanılan kolon</span></div>
-    <div class="stat"><b>{{ entry.screens|length }}</b><span>ekran</span></div>
-    <div class="stat"><b>{{ relations|length }}</b><span>ilişki</span></div>
-  </div>
-  {% if info.comment %}<p><b>Açıklama:</b> {{ info.comment }}</p>{% endif %}
-  {% else %}<p class="warn">Bu nesne veri sözlüğünde yok (veri sözlüğü yüklenmemiş veya başka şemada).</p>{% endif %}
-  <p class="small">Ekranlar: {% for c, t in entry.screens %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>{% else %}<span class="muted">yok</span>{% endfor %}</p>
-  <div class="toolbar">
-    <form method="post"><input type="hidden" name="action" value="sample"><button class="secondary">Örnek 20 satır</button></form>
-    <form method="post" action="{{ url_for('siron.builder') }}"><input type="hidden" name="root" value="{{ table_label(key) }}"><input type="hidden" name="t" value="{{ table_label(key) }}">
-      <button class="secondary">Sorgu oluşturucuda aç</button></form>
-    <form method="post" class="toolbar"><input type="hidden" name="action" value="find">
-      <div><label>Bu tabloda değer ara</label><input type="text" name="value" value="{{ needle }}" required></div>
-      <div><select name="mode">{% for k, v in [('exact','Birebir'), ('ci','Harf duyarsız'), ('contains','İçeriyor')] %}<option value="{{ k }}" {% if mode == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
-      <button class="secondary">Ara</button></form>
-  </div>
+{% from "_macros.html" import icon, table_label, table_link, results_table, usage_badges, status_badge, relation_rows, pii, empty with context %}
+{% block page_title %}{{ key[1] }}{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.tables') }}">Tablolar</a>{{ icon('chev') }}<b>{{ table_label(key) }}</b>{% endblock %}
+{% block eyebrow %}{% set a = ann(annotations, key) %}<div class="eyebrow">{{ icon('table') }}{{ key[0] or '' }} · {{ info.obj_type if info else (obj_type or 'nesne') }} {{ status_badge(a.status) }}</div>{% endblock %}
+{% block subtitle %}<p class="sub">{{ info.comment if info and info.comment else 'Veritabanında açıklama yok.' }}</p>{% endblock %}
+{% block actions %}
+  <form method="post" class="inline"><input type="hidden" name="action" value="sample"><button class="btn-secondary" data-busy="Okunuyor">{{ icon('table') }}Örnek satırlar</button></form>
+  {% if info %}<form method="post" class="inline"><input type="hidden" name="action" value="profile"><button class="btn-secondary" data-busy="Başlatılıyor">{{ icon('chart') }}{{ 'Profili yenile' if profiles else 'Profil çıkar' }}</button></form>{% endif %}
+  <form method="post" action="{{ url_for('siron.builder') }}" class="inline"><input type="hidden" name="root" value="{{ table_label(key) }}"><input type="hidden" name="t" value="{{ table_label(key) }}">
+    <button class="btn-secondary">{{ icon('blocks') }}Sorgu oluştur</button></form>
+{% endblock %}
+{% block content %}{% set a = ann(annotations, key) %}
+<div class="mini-stats mb16">
+  <div class="mini-stat"><b>{{ info.num_rows|thousands if info and info.num_rows is not none else '—' }}</b><span>satır{% if info and info.last_analyzed %} · {{ info.last_analyzed[:10] }}{% endif %}</span></div>
+  <div class="mini-stat"><b>{{ info.columns|length if info else '—' }}</b><span>kolon</span></div>
+  <div class="mini-stat"><b>{{ col_usage|length }}</b><span>ekranlarda kullanılan</span></div>
+  <div class="mini-stat"><b>{{ entry.screens|length }}</b><span>ekran</span></div>
+  <div class="mini-stat"><b>{{ relations|length }}</b><span>ilişki</span></div>
+  <div class="mini-stat"><b>{{ sensitive.values()|select|list|length }}</b><span>hassas kolon</span></div>
 </div>
+{% if not info %}<div class="callout warn">{{ icon('alert') }}<div>Bu nesne veri sözlüğünde yok (sözlük yüklenmemiş veya başka şemada).</div></div>{% endif %}
 
-{% if sample_error %}<div class="card"><p class="err">{{ sample_error }}</p></div>{% endif %}
-{% if sample %}<div class="card"><h2 style="margin-top:0">Örnek satırlar</h2>{{ results_table(sample) }}</div>{% endif %}
-{% if needle and request.method == 'POST' %}<div class="card"><h2 style="margin-top:0">"{{ needle }}" araması</h2>
-  {% for e in find_errors %}<p class="err small">{{ e }}</p>{% endfor %}
-  {% for f in findings %}<p><b>{{ f.column }}</b>: {{ f.count }}{% if f.capped %}+{% endif %} satır
-    <form method="post" action="{{ url_for('siron.sql_runner') }}" class="inline"><input type="hidden" name="sql" value="{{ f.sample_sql }}"><button class="secondary" style="margin:0 0 0 8px;padding:2px 8px;font-size:12px">Satırları gör</button></form></p>
-  {% else %}{% if not find_errors %}<p class="muted">Eşleşme yok.</p>{% endif %}{% endfor %}</div>{% endif %}
+{% if sample_error %}<div class="callout err">{{ icon('alert') }}<div>{{ sample_error }}</div></div>{% endif %}
+{% if sample %}<div class="card"><div class="card-head"><h2>{{ icon('table') }}Örnek satırlar</h2></div>{{ results_table(sample) }}</div>{% endif %}
+
+<div class="grid g3 mb16">
+  <div class="card" style="margin:0">
+    <div class="card-head"><h2>{{ icon('search') }}Bu tabloda değer ara</h2></div>
+    <div class="card-body">
+      <form method="post" class="toolbar"><input type="hidden" name="action" value="find">
+        <div class="field" style="flex:1"><input type="text" name="value" value="{{ needle }}" placeholder="Aranan değer" required></div>
+        <div class="field"><select name="mode">{% for k, v in [('exact','Birebir'), ('ci','Harf duyarsız'), ('contains','İçeriyor')] %}<option value="{{ k }}" {% if mode == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+        <button class="btn-secondary" data-busy="Aranıyor">{{ icon('search') }}</button></form>
+      {% if needle and request.method == 'POST' %}
+        {% for e in find_errors %}<div class="callout err mt8">{{ icon('alert') }}<div>{{ e }}</div></div>{% endfor %}
+        <ul class="list mt8" style="margin:8px -20px -18px">{% for f in findings %}<li><b class="mono grow">{{ f.column }}</b><span class="small">{{ f.count }}{% if f.capped %}+{% endif %} satır</span>
+          <form method="post" action="{{ url_for('siron.sql_runner') }}" class="inline"><input type="hidden" name="sql" value="{{ f.sample_sql }}"><button class="btn-ghost btn-sm">Gör{{ icon('chev') }}</button></form></li>
+        {% else %}{% if not find_errors %}<li class="muted small">Eşleşme yok.</li>{% endif %}{% endfor %}</ul>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card" style="margin:0">
+    <div class="card-head"><h2>{{ icon('layers') }}Ekranlar</h2></div>
+    <ul class="list">{% for c, t in entry.screens %}<li><a class="grow t" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>{% if t.indirect %}<span class="badge">dolaylı</span>{% endif %}<span class="xs muted">{{ t.statements|length }} SQL</span></li>{% else %}<li class="muted small">Hiçbir ekranda görünmedi.</li>{% endfor %}</ul>
+  </div>
+  {% if deps or used_by or base_tables %}
+  <div class="card" style="margin:0">
+    <div class="card-head"><h2>{{ icon('package') }}Bağımlılıklar</h2></div>
+    <div class="card-body">
+      {% if base_tables %}<h3 class="mb8">Alttaki tablolar</h3><p>{% for k in base_tables %}{{ table_link(k, 'badge') }}{% endfor %}</p>{% endif %}
+      {% if used_by %}<h3 class="mb8">Bu nesneyi kullananlar</h3><p>{% for k, t in used_by %}<span class="badge outline" title="{{ t }}">{{ t|lower }} · {{ k[1] }}</span>{% endfor %}</p>{% endif %}
+      {% if deps %}<h3 class="mb8">Kullandıkları</h3><p class="mb0">{% for k, t in deps %}<span class="badge outline">{{ t|lower }} · {{ k[1] }}</span>{% endfor %}</p>{% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
 
 <form method="post" class="card">
   <input type="hidden" name="action" value="annotate">
-  <h2 style="margin-top:0">Tablo notu</h2>
-  <div class="row">
-    <div style="max-width:180px"><label>Durum</label><select name="status"><option value="">—</option>
-      {% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if a.status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
-    <div><label>Hedef tablo / varlık (yeni sistem)</label><input type="text" name="target" value="{{ a.target or '' }}"></div>
-    <div style="flex:2"><label>İş anlamı / not</label><input type="text" name="note" value="{{ a.note or '' }}"></div>
+  <div class="card-head"><h2>{{ icon('edit') }}Eşleme kararları</h2><span class="meta">tablo ve kolon düzeyinde</span>
+    <div class="tools"><button class="btn-primary btn-sm">{{ icon('check') }}Kaydet</button></div></div>
+  <div class="card-body">
+    <div class="row">
+      <div class="field" style="max-width:190px"><label>Tablo durumu</label><select name="status"><option value="">— karar yok —</option>
+        {% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if a.status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Hedef tablo / varlık</label><input type="text" name="target" value="{{ a.target or '' }}" placeholder="PARTY"></div>
+      <div class="field" style="flex:2"><label>Çıkarma filtresi (WHERE)</label><input type="text" name="extract_filter" value="{{ a.extract_filter or '' }}" placeholder="TX_DATE >= ADD_MONTHS(SYSDATE, -60)" class="mono"></div>
+    </div>
+    <div class="field mb0"><label>İş anlamı / not</label><input type="text" name="note" value="{{ a.note or '' }}"></div>
   </div>
-
   {% if info %}
-  <h2>Kolonlar</h2>
-  <div class="scroll">
+  <div class="table-wrap tall">
   <table>
-    <tr><th>#</th><th>Kolon</th><th>Tip</th><th>Null</th><th>Anahtar</th><th>Açıklama</th><th>Kullanım (ekranlar)</th><th>Durum</th><th>Hedef alan</th><th>Not</th></tr>
-    {% for c in info.columns %}
-    {% set u = col_usage.get(c.name) %}{% set ca = ann(annotations, key, c.name) %}
-    <tr id="col-{{ c.name }}" {% if u %}style="background:#f7faff"{% endif %}>
-      <td class="small muted">{{ c.position }}</td><td class="mono"><b>{{ c.name }}</b></td>
-      <td class="small nowrap">{{ c.type_label }}</td><td class="small">{{ '' if c.nullable else 'NOT NULL' }}</td>
-      <td>{% if c.name in pk %}<span class="badge src-constraint">PK</span>{% endif %}{% if c.name in uk %}<span class="badge">UK</span>{% endif %}{% if c.name in fk %}<span class="badge src-sql">FK</span>{% endif %}</td>
-      <td class="small">{{ c.comment or '' }}</td>
-      <td>{% if u %}{{ usage_badges(u.kinds) }}<br><span class="small">{% for c2 in u.screens.values() %}{{ c2.name }}{{ ', ' if not loop.last }}{% endfor %}</span>{% endif %}</td>
-      <td><select name="status_{{ c.name }}"><option value="">—</option>{% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if ca.status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></td>
-      <td><input type="text" name="target_{{ c.name }}" value="{{ ca.target or '' }}" style="min-width:120px"></td>
+    <thead><tr><th>Kolon</th><th>Tip</th><th>Kullanım</th><th class="num">Doluluk</th><th>Durum</th><th>Hassas</th><th>Hedef alan</th><th>Not</th></tr></thead>
+    <tbody>
+    {% for c in info.columns %}{% set u = col_usage.get(c.name) %}{% set ca = ann(annotations, key, c.name) %}{% set p = profiles.get(c.name) %}
+    <tr id="col-{{ c.name }}" class="{{ 'used' if u }}">
+      <td class="nowrap"><b class="mono">{{ c.name }}</b>
+        {% if c.name in pk %}<span class="kbadge pk">PK</span>{% endif %}{% if c.name in uk %}<span class="kbadge">UK</span>{% endif %}{% if c.name in fk %}<span class="kbadge fk">FK</span>{% endif %}
+        {{ pii(sensitive.get(c.name)) }}
+        {% if c.comment %}<span class="cell-sub">{{ c.comment }}</span>{% endif %}</td>
+      <td class="small nowrap">{{ c.type_label }}{% if not c.nullable %}<span class="cell-sub">NOT NULL</span>{% endif %}</td>
+      <td>{% if u %}{{ usage_badges(u.kinds) }}<span class="cell-sub">{{ u.screens|length }} ekran</span>{% endif %}</td>
+      <td class="num small nowrap">{% if p %}{{ p.fill_pct|pct(1) if p.fill_pct is not none else '—' }}<span class="cell-sub">{{ p.distinct|thousands }} farklı</span>{% for f in flags.get(c.name, []) %}<span class="badge {{ 'info' if f == 'benzersiz' else 'warn' }}">{{ f }}</span>{% endfor %}{% endif %}</td>
+      <td><select name="status_{{ c.name }}" style="min-width:132px"><option value="">—</option>{% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if ca.status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></td>
+      <td><select name="sens_{{ c.name }}" title="Hassas veri (KVKK)" style="min-width:108px"><option value="" {% if ca.sensitive is none %}selected{% endif %}>Otomatik</option><option value="1" {% if ca.sensitive == 1 %}selected{% endif %}>Evet</option><option value="0" {% if ca.sensitive == 0 %}selected{% endif %}>Hayır</option></select></td>
+      <td><input type="text" name="target_{{ c.name }}" value="{{ ca.target or '' }}" style="min-width:130px"></td>
       <td><input type="text" name="note_{{ c.name }}" value="{{ ca.note or '' }}" style="min-width:160px"></td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
   </div>
+  <div class="card-foot"><button class="btn-primary">{{ icon('check') }}Kararları kaydet</button><span class="small muted">Mavi satırlar ekranlarda kullanılan kolonlardır. "Otomatik" hassasiyet kolon adından tahmin edilir.</span></div>
   {% endif %}
-  <button>Notları kaydet</button>
 </form>
 
 <div class="card">
-  <h2 style="margin-top:0">İlişkiler ({{ relations|length }})</h2>
-  <p class="small muted">Bu tablo ile şemadaki diğer tablolar arasındaki constraint, Siron SQL join ve ad/tip tahmini ilişkileri.</p>
+  <div class="card-head"><h2>{{ icon('link') }}İlişkiler</h2><span class="meta">şemadaki diğer tablolarla · {{ relations|length }}</span></div>
   {{ relation_rows(relations) }}
 </div>
 
 <div class="card">
-  <h2 style="margin-top:0">Bu tabloyu kullanan SQL'ler ({{ statements|length }})</h2>
-  <table>
-    <tr><th>Ekran</th><th>SQL_ID</th><th>İşlem</th><th>SQL</th></tr>
+  <div class="card-head"><h2>{{ icon('code') }}Bu tabloyu kullanan SQL'ler</h2><span class="meta">{{ statements|length }}</span></div>
+  <div class="table-wrap" style="max-height:360px"><table>
+    <thead><tr><th>Ekran</th><th>SQL_ID</th><th>İşlem</th><th>SQL</th></tr></thead><tbody>
     {% for c, s in statements %}
-    <tr><td class="small">{{ c.name }}</td><td><a href="{{ url_for('siron.statement', capture_id=c.id, sql_id=s.sql_id) }}"><code>{{ s.sql_id }}</code></a></td>
+    <tr><td class="small">{{ c.name }}</td><td><a class="mono" href="{{ url_for('siron.statement', capture_id=c.id, sql_id=s.sql_id) }}">{{ s.sql_id }}</a></td>
       <td>{{ s.action or '' }}</td><td class="sqlcell" title="{{ s.sql_text[:2000] }}">{{ s.sql_text }}</td></tr>
-    {% else %}<tr><td colspan="4" class="muted">Yok.</td></tr>{% endfor %}
-  </table>
+    {% else %}<tr><td colspan="4" class="muted small">Yok.</td></tr>{% endfor %}
+  </tbody></table></div>
 </div>
 {% endblock %}

@@ -1,28 +1,33 @@
 {% extends "base.html" %}
-{% from "_macros.html" import table_link, capture_nav, usage_badges, status_badge with context %}
-{% block title %}{{ capture.name }} - kolonlar{% endblock %}
+{% from "_macros.html" import icon, table_link, capture_nav, capture_crumbs, usage_badges, status_badge, pii, empty with context %}
+{% block page_title %}{{ capture.name }}{% endblock %}
+{% block crumbs %}{{ capture_crumbs(capture, 'Kolonlar') }}{% endblock %}
 {% block content %}
-<h1>{{ capture.name }}</h1>
-{{ capture_nav(capture, tab) }}
-<p class="hint">Bu ekranın SQL'lerinde geçen kolonlar. <b>gösterim</b>: SELECT listesinde (ekranda gösterilen veri büyük olasılıkla budur),
-  <b>filtre/join</b>: WHERE/ON koşullarında, <b>yazma</b>: INSERT/UPDATE ile değiştirilen kolonlar.
-  {% if stars %}<br><b class="warn">Dikkat:</b> {{ stars|join(', ') }} için <code>SELECT *</code> kullanılmış; bu tabloların tüm kolonları okunuyor.{% endif %}</p>
+{{ capture_nav(capture, tab, ca) }}
+<div class="callout">{{ icon('info') }}<div><b>gösterim</b>: SELECT listesinde (ekranda görünen veri büyük olasılıkla budur) · <b>filtre/join</b>: WHERE/ON koşullarında ·
+  <b>yazma</b>: INSERT/UPDATE ile değişen kolonlar. Doluluk ve örnek değerler için tabloyu profilleyin.
+  {% if stars %}<br><b class="warn">SELECT *:</b> {{ stars|join(', ') }} tablolarının tüm kolonları okunuyor.{% endif %}</div></div>
 {% for key, cols in by_table.items() %}
 <div class="card">
-  <h2 style="margin-top:0">{{ table_link(key) }} <span class="muted small">{{ cols|length }} kolon</span> {{ status_badge(ann(annotations, key).status) }}</h2>
+  <div class="card-head"><h2>{{ icon('table') }}{{ table_link(key) }}</h2><span class="meta">{{ cols|length }} kolon</span>{{ status_badge(ann(annotations, key).status) }}
+    <div class="tools"><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.table', owner=key[0] or '-', name=key[1]) }}">{{ icon('edit') }}Eşlemeyi düzenle</a></div></div>
+  <div class="table-wrap">
   <table>
-    <tr><th>Kolon</th><th>Tip</th><th>Açıklama (DB yorumu)</th><th>Kullanım</th><th>Durum</th><th>Hedef alan</th><th>Not</th><th class="right">SQL</th></tr>
-    {% for col, cu, info in cols %}
-    {% set a = ann(annotations, key, col[2]) %}
-    <tr><td class="mono"><b>{{ col[2] }}</b></td><td class="small">{{ info.type_label if info else '' }}</td>
-      <td class="small">{{ info.comment if info and info.comment else '' }}</td>
-      <td>{{ usage_badges(cu.kinds) }}</td><td>{{ status_badge(a.status) }}</td>
-      <td class="small">{{ a.target or '' }}</td><td class="small">{{ a.note or '' }}</td>
-      <td class="right small">{% for sid in cu.sql_ids|sort %}<a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=sid) }}">{{ sid[:6] }}</a> {% endfor %}</td></tr>
+    <thead><tr><th>Kolon</th><th>Tip</th><th>Açıklama</th><th>Kullanım</th><th class="num">Doluluk</th><th>Örnek değerler</th><th>Durum</th><th>Hedef alan</th><th class="tight">SQL</th></tr></thead>
+    <tbody>
+    {% for col, cu, info, prof, sens in cols %}{% set a = ann(annotations, key, col[2]) %}
+    <tr><td class="nowrap"><b class="mono">{{ col[2] }}</b> {{ pii(sens) }}</td><td class="small nowrap">{{ info.type_label if info else '' }}</td>
+      <td class="small">{{ info.comment if info and info.comment else '' }}</td><td>{{ usage_badges(cu.kinds) }}</td>
+      <td class="num small">{{ (prof.fill_pct ~ '%') if prof and prof.fill_pct is not none else '' }}</td>
+      <td class="small">{% if prof and prof.top %}{% for v, n in prof.top[:3] %}<span class="badge outline" title="{{ n }} satır">{{ '••••' if sens else v }}</span>{% endfor %}{% endif %}</td>
+      <td>{{ status_badge(a.status) }}</td><td class="small"><b>{{ a.target or '' }}</b></td>
+      <td class="small mono nowrap">{% for sid in cu.sql_ids|sort %}<a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=sid) }}">{{ sid[:6] }}</a> {% endfor %}</td></tr>
     {% endfor %}
+    </tbody>
   </table>
+  </div>
 </div>
 {% else %}
-<p class="muted">Kolon tespit edilemedi. Veri sözlüğü yüklü değilse yalnızca alias'lı (t.kolon) referanslar bulunabilir.</p>
+<div class="card">{{ empty('columns', 'Kolon tespit edilemedi', '<span class="small">Veri sözlüğü yüklü değilse yalnız alias\'lı (t.kolon) referanslar bulunur.</span>') }}</div>
 {% endfor %}
 {% endblock %}

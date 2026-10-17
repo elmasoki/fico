@@ -48,3 +48,51 @@ def test_layout_bounds():
 def test_format_sql():
     out = format_sql("select a, b from t where x = 'from y' and z between 1 and 2 order by a")
     assert out.splitlines() == ["SELECT a, b", "FROM t", "WHERE x = 'from y'", "  AND z between 1 and 2", "ORDER BY a"]
+
+
+def test_sensitive_detection():
+    from siron_tracer.privacy import Privacy
+    p = Privacy()
+    for name in ("TCKN", "TC_KIMLIK_NO", "IBAN", "ACC_NO", "PHONE_NUMBER", "EMAIL", "FULL_NAME", "BIRTH_DATE", "ADRES"):
+        assert p.guess(name), name
+    for name in ("STATUS", "AMOUNT", "SCENARIO_ID", "NAME", "CURRENCY"):
+        assert not p.guess(name), name
+    assert p.is_sensitive("STATUS", {"sensitive": 1}) and not p.is_sensitive("IBAN", {"sensitive": 0})
+    idx = p.mask_indexes(["A", "B", "PHONE"], ["S.T.IBAN", "S.T.STATUS", None], "sensitive")
+    assert idx == {0, 2}
+
+
+def test_signature_groups_literals():
+    from siron_tracer.sqlutil import sql_signature
+    a = sql_signature("select * from t where a = 'x' and b = 12 and c in (1,2,3) and d = :1")
+    b = sql_signature("SELECT *  FROM t WHERE a='yy' AND b=7 AND c IN (4, 5) AND d = :1")
+    assert a == b and ":1" in a
+    assert sql_signature("select a from t where x = 1") != sql_signature("select b from t where x = 1")
+
+
+def test_load_order_and_cycles():
+    from siron_tracer.migration import load_order
+    from siron_tracer.relations import build_relations
+    rels = build_relations(CAT, set(CAT.tables))
+    order, parents = load_order(list(CAT.tables), rels)
+    names = [k[1] for k, _ in order]
+    assert names.index("CUSTOMER") < names.index("ACCOUNT") < names.index("TRANSACTION")
+
+
+def test_excel_parsing_rules():
+    from siron_tracer.excel import parse_flag, parse_status
+    assert parse_status("Taşınacak") == "migrate" and parse_status("gereksiz") == "ignore" and parse_status("") is None
+    assert parse_flag("Evet") == 1 and parse_flag("hayır") == 0 and parse_flag("Evet (tahmin)") is None
+    import pytest
+    with pytest.raises(ValueError):
+        parse_status("Belki")
+
+
+def test_dependency_resolution():
+    from siron_tracer.catalog import Catalog, Dependency
+    deps = [Dependency("S", "PKG", "PACKAGE BODY", "S", "V1", "VIEW"),
+            Dependency("S", "V1", "VIEW", "S", "T1", "TABLE"),
+            Dependency("S", "PKG", "PACKAGE BODY", "S", "T2", "TABLE")]
+    cat = Catalog(list(CAT.tables.values()), {}, [], "v", deps)
+    assert set(cat.underlying_tables(("S", "PKG"))) == {("S", "V1"), ("S", "T1"), ("S", "T2")}
+    assert ("S", "PKG") in [k for k, _ in cat.used_by(("S", "T2"))]

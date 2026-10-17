@@ -1,20 +1,17 @@
 <!doctype html>
 <html lang="tr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{{ title }}</title>
-<style>{% include "report.css" %}</style>
-</head>
-<body><div class="page">
-<h1>{{ title }}</h1>
-<p class="meta">Oluşturulma: {{ created }}{% for k, v in extra.items() %} · {{ k }}: {{ v }}{% endfor %} · {{ rows|length }} satır{% if truncated %} (ilk satırlar){% endif %}
-  {% if masked %} · <b>veriler maskelenmiştir</b>{% endif %}</p>
-<h3>SQL</h3>
-<pre>{{ format_sql(sql) }}</pre>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{{ title }}</title><style>{% include "report.css" %}</style></head>
+<body>
+<header class="cover" style="padding:30px 48px 26px">
+  <div class="brand"><span class="mark">S</span>SIRON SQL TRACER · SORGU SONUCU</div>
+  <h1 style="font-size:24px;margin-top:14px">{{ title }}</h1>
+  <div class="meta">Oluşturulma {{ created }}{% for k, v in extra.items() %} · {{ k }}: {{ v }}{% endfor %} · {{ rows|length }} satır{% if truncated %} (ilk satırlar){% endif %}</div>
+  {% if mask_mode != 'none' %}<div class="flag">Maskeleme: {{ MASK_MODES.get(mask_mode) }}{% if masked_cols and mask_mode == 'sensitive' %} — {{ masked_cols|join(', ') }}{% endif %}</div>{% endif %}
+</header>
+<div class="page">
+<h3>SQL</h3><pre>{{ format_sql(sql) }}</pre>
 <h3>Sonuç</h3>
-<div style="overflow:auto"><table>
-  <tr>{% for c in cols %}<th>{{ c }}{% if sources and sources[loop.index0] %}<span class="colsrc">{{ sources[loop.index0] }}</span>{% endif %}</th>{% endfor %}</tr>
-  {% for r in rows %}<tr>{% for v in r %}<td>{{ '' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}
-</table></div>
+<div style="overflow:auto"><table><thead><tr>{% for c in cols %}<th>{{ c }}{% if sources and sources[loop.index0] %}<span class="colsrc">{{ sources[loop.index0] }}</span>{% endif %}</th>{% endfor %}</tr></thead>
+  <tbody>{% for r in rows %}<tr>{% for v in r %}<td>{{ '' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+<div class="foot"><span>Siron SQL Tracer {{ app_version }}</span><span>{{ created }}</span></div>
 </div></body></html>
