@@ -28,6 +28,10 @@
 {% block content %}
 {{ capture_nav(capture, tab, ca) }}
 {% if capture.message %}<div class="callout warn">{{ icon('alert') }}<div>{{ capture.message }}</div></div>{% endif %}
+{% if mixed %}<div class="callout warn">{{ icon('alert') }}<div><b>Bu yakalamaya başka kaynaklardan SQL karışmış olabilir.</b>
+  {% for w in source_warnings %}<div class="small">{{ w }}</div>{% endfor %}
+  <a href="#sources" class="small">Kaynakları incele ve sizin olmayanları ayıklayın →</a></div></div>
+{% elif capture.excluded_sources %}<div class="callout">{{ icon('filter') }}<div>{{ capture.excluded_sources|length }} kaynak analiz dışında bırakıldı. <a href="#sources">Kaynaklar</a></div></div>{% endif %}
 {% if not has_catalog %}<div class="callout">{{ icon('info') }}<div><b>Veri sözlüğü yüklü değil.</b> Tablolar sezgisel bulunuyor; kolon analizi ve ilişki tahmini sınırlı. Genel bakıştan veri sözlüğünü yükleyin.</div></div>{% endif %}
 
 <div class="mini-stats mb16">
@@ -37,6 +41,8 @@
   <div class="mini-stat"><b>{{ ca.statements|length }}</b><span>farklı SQL{% if ca.groups|length < ca.statements|length %} · {{ ca.groups|length }} kalıp{% endif %}</span></div>
   <div class="mini-stat"><b>{{ relations|length }}</b><span>ilişki</span></div>
   <div class="mini-stat"><b>{{ record_count|thousands }}</b><span>audit kaydı</span></div>
+  <a class="mini-stat" href="#sources" style="color:inherit;text-decoration:none"><b>{{ sources|rejectattr('excluded')|list|length }}{% if capture.excluded_sources %}<span class="muted" style="font-size:13px;font-weight:500"> / {{ sources|length }}</span>{% endif %}</b><span>kaynak{% if mixed %} <span class="badge warn">karışık</span>{% endif %}</span></a>
+  {% if marker_count %}<a class="mini-stat" href="{{ url_for('siron.capture_timeline', capture_id=capture.id) }}" style="color:inherit;text-decoration:none"><b>{{ marker_count }}</b><span>işaret · zaman akışı</span></a>{% endif %}
   <div class="mini-stat" style="flex:1;min-width:220px"><span>İşlem dağılımı</span><div class="mt8">{% for a, n in actions[:6] %}<span class="badge outline">{{ a }} <b>{{ n }}</b></span>{% endfor %}</div></div>
 </div>
 {% if not capture.is_noise %}<p class="small muted mt0">{% if exclude_noise %}{{ icon('filter') }} Gürültü yakalamalarındaki {{ noise_count }} SQL_ID gizleniyor · <a href="?noise=0">hepsini göster</a>{% else %}Tüm SQL'ler gösteriliyor · <a href="?noise=1">gürültüyü gizle</a>{% endif %}</p>{% endif %}
@@ -58,6 +64,25 @@
   </table>
   </div>
 </div>
+
+{% if sources %}
+<form method="post" action="{{ url_for('siron.capture_sources', capture_id=capture.id) }}" class="card" id="sources">
+  <div class="card-head"><h2>{{ icon('user') }}Kaynaklar</h2><span class="meta">SQL'leri çalıştıran kullanıcı, makine ve program · işareti kaldırılan kaynak analizden çıkar</span>
+    {% if sources|length > 1 %}<div class="tools"><button class="btn-secondary btn-sm">{{ icon('check') }}Seçimi uygula</button></div>{% endif %}</div>
+  <div class="table-wrap"><table>
+    <thead><tr>{% if sources|length > 1 %}<th class="tight">Dahil</th>{% endif %}<th>DB kullanıcısı</th><th>OS kullanıcısı</th><th>Makine</th><th>Program</th><th>Client ID</th><th class="num">Oturum</th><th class="num">Kayıt</th><th class="num">SQL</th><th>Zaman (UTC)</th></tr></thead>
+    <tbody>{% for src in sources %}
+      <tr class="{{ 'muted' if src.excluded }}" {% if src.excluded %}style="opacity:.55"{% endif %}>
+        {% if sources|length > 1 %}<td><input type="checkbox" name="keep" value="{{ src.key }}" {% if not src.excluded %}checked{% endif %}></td>{% endif %}
+        <td class="small">{{ src.db_user or '—' }}</td><td class="small"><b>{{ src.os_user or '—' }}</b></td><td class="small">{{ src.host or '—' }}</td>
+        <td class="small">{{ src.program or '—' }}</td><td class="small">{{ src.client_id or '—' }}</td>
+        <td class="num">{{ src.sessions|length }}</td><td class="num">{{ src.records|thousands }}</td><td class="num">{{ src.sql_ids|length }}</td>
+        <td class="small nowrap mono">{{ (src.first_ts or '')[11:19] }} → {{ (src.last_ts or '')[11:19] }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% if not mixed and source_warnings %}<div class="card-foot xs muted">{{ icon('info') }} {{ source_warnings|join(' ') }}</div>{% endif %}
+</form>
+{% endif %}
 
 {% if relations %}
 <div class="card">

@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, results_table, mask_select, capture_crumbs with context %}
+{% block page_title %}{{ query.name if query else 'Taşıma sorgusu üret' }}{% endblock %}
+{% block crumbs %}{% if query %}<a href="{{ url_for('siron.migration') }}#queries">Taşıma paketi</a>{{ icon('chev') }}<b>{{ query.name }}</b>
+{% else %}{{ capture_crumbs(capture, st.sql_id) }}{% endif %}{% endblock %}
+{% block eyebrow %}<div class="eyebrow">{{ icon('package') }}{{ 'Kayıtlı ekran sorgusu' if query else 'Ekran sorgusu → taşıma sorgusu' }}{% if st %} · <a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=st.sql_id) }}" class="mono">{{ st.sql_id }}</a>{% endif %}{% if capture %} · {{ capture.name }}{% endif %}</div>{% endblock %}
+{% block subtitle %}<p class="sub">Siron bu ekranı doldururken SQL'i tek bir kayıt için çalıştırdı. Bind değerine bağlı filtreler ve sayfalama kaldırılarak <b>aynı join'ler, kolonlar ve sabit filtrelerle tüm kayıtları</b> getiren sorgu üretildi. Koşul kaldırmak sonucu yalnız genişletir, daraltmaz. Sorgu şema <b>{{ schema }}</b> ile çalışır.</p>{% endblock %}
+{% block content %}
+{% if gen.error %}<div class="callout err">{{ icon('alert') }}<div>{{ gen.error }}</div></div>{% endif %}
+<form method="post" id="xq">
+<div class="grid g2" style="align-items:start">
+  <div class="card" style="margin:0">
+    <div class="card-head"><h2>{{ icon('code') }}Siron'un çalıştırdığı</h2><span class="meta">tek kayıt · bind'ler kırmızı</span></div>
+    <div class="card-body">
+      {% if st %}{% set segs = bind_segments_for(st.sql_text) %}
+      <pre class="sql-hl">{% for text, si in segs %}{% if si is none %}{{ text }}{% else %}<mark class="bv missing">{{ text }}</mark>{% endif %}{% endfor %}</pre>
+      {% else %}<p class="muted small mb0">Kaynak SQL artık mevcut değil (yakalama silinmiş olabilir); kayıtlı sorgu aşağıda düzenlenebilir.</p>{% endif %}
+      {% if gen.removed %}<h3 class="mt16 mb8">Kaldırılan koşullar <span class="muted small">({{ gen.removed|length }})</span></h3>
+        <div class="cond-list">{% for c in gen.removed %}<span class="cond removed" title="Bind değerine veya sayfalamaya bağlı">{{ icon('x') }}<code>{{ c }}</code></span>{% endfor %}</div>{% endif %}
+      {% if gen.kept %}<h3 class="mt16 mb8">Korunan koşullar <span class="muted small">(join ve sabit filtreler)</span></h3>
+        <div class="cond-list">{% for c in gen.kept %}<span class="cond kept">{{ icon('check') }}<code>{{ c }}</code></span>{% endfor %}</div>{% endif %}
+      {% if gen.nulled %}<p class="xs muted mt8 mb0">Koşul dışında kalan bind'ler NULL yapıldı: {{ gen.nulled|join(', ') }}</p>{% endif %}
+      {% if st and not gen.removed and not gen.error %}<div class="callout mt16 mb0">{{ icon('info') }}<div>Bu sorguda bind'e bağlı filtre yok; zaten tüm kayıtları getiriyor.</div></div>{% endif %}
+    </div>
+  </div>
+  <div class="card" style="margin:0">
+    <div class="card-head"><h2>{{ icon('package') }}Tüm kayıtlar için</h2><span class="meta">düzenleyebilirsiniz</span>
+      <div class="tools"><button type="button" class="btn-ghost btn-sm" onclick="navigator.clipboard.writeText(document.querySelector('#xq textarea[name=sql]').value)">{{ icon('copy') }}Kopyala</button></div></div>
+    <div class="card-body">
+      <textarea class="sql" name="sql" spellcheck="false" style="min-height:260px">{{ sql }}</textarea>
+      <div class="toolbar mt8" style="flex-wrap:wrap">
+        <button name="do" value="count" class="btn-secondary" data-busy="Sayılıyor">{{ icon('chart') }}Satır sayısı</button>
+        <button name="do" value="preview" class="btn-secondary" data-busy="Çalışıyor">{{ icon('play') }}İlk 50 satır</button>
+        {{ mask_select() }}
+        <button name="do" value="csv" class="btn-secondary" title="En fazla {{ settings.max_export_rows|thousands }} satır">{{ icon('download') }}CSV</button>
+        <a class="btn btn-ghost" href="{{ url_for('siron.sql_runner', sql=sql, schema=schema) }}">{{ icon('code') }}Konsolda aç</a>
+      </div>
+      {% if count is not none %}<div class="count-box mt16"><b class="tnum">{{ count|thousands }}</b><span>satır taşınacak</span></div>{% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card mt16">
+  <div class="card-head"><h2>{{ icon('bookmark') }}{{ 'Kayıtlı sorgu' if query else 'Taşıma paketine ekle' }}</h2>
+    <span class="meta">Taşıma paketi bu sorguyu kendi CSV dosyası ve SQL betiği olarak içerir; "Veriyi çıkar" ile birlikte çalışır</span></div>
+  <div class="card-body">
+    <div class="row">
+      <div class="field" style="flex:2"><label>Ad</label><input type="text" name="name" value="{{ defaults.name }}" required></div>
+      {% if not query %}<div class="field"><label>Ekran</label><select name="screen_id"><option value="">—</option>
+        {% for sc in screens %}<option value="{{ sc.id }}" {% if sc.id == defaults.screen_id %}selected{% endif %}>{% if sc.module %}{{ sc.module }} › {% endif %}{{ sc.name }}</option>{% endfor %}</select></div>
+      {% elif query.screen_name %}<div class="field"><label>Ekran</label><input type="text" value="{{ query.screen_module ~ ' › ' if query.screen_module }}{{ query.screen_name }}" disabled></div>{% endif %}
+    </div>
+    <div class="field mb0"><label>Not</label><input type="text" name="note" value="{{ defaults.note or '' }}" placeholder="ör. Hesaplar sekmesindeki hareket listesi"></div>
+  </div>
+  <div class="card-foot">
+    <button name="do" value="save" class="btn-primary">{{ icon('check') }}{{ 'Kaydet' if query else 'Taşıma paketine ekle' }}</button>
+    {% if query %}<a class="btn btn-ghost" href="{{ url_for('siron.migration') }}#queries">Taşıma paketine git{{ icon('chev') }}</a><span class="spacer"></span>
+      <button name="do" value="delete" class="btn-danger" formnovalidate onclick="return confirm('Bu sorgu taşıma paketinden çıkarılsın mı?')">{{ icon('trash') }}Paketten çıkar</button>{% endif %}
+  </div>
+</div>
+</form>
+
+{% if error %}<div class="callout err">{{ icon('alert') }}<div>{{ error }}</div></div>{% endif %}
+{% if result %}<div class="card"><div class="card-head"><h2>{{ icon('table') }}Önizleme</h2><span class="meta">ilk 50 satır</span></div>{{ results_table(result) }}</div>{% endif %}
+{% endblock %}

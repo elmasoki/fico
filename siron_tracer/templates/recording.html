@@ -18,6 +18,21 @@
   <div class="card kpi"><div class="k-label">{{ icon('code') }}Farklı SQL</div><div class="k-value tnum" id="stmts">—</div><div class="k-sub">canlı önizleme</div></div>
   <div class="card kpi"><div class="k-label">{{ icon('user') }}Kullanıcılar</div><div class="k-value" style="font-size:16px;margin-top:12px">{{ capture.db_users|join(', ') }}</div><div class="k-sub">şema {{ capture.schema_name or settings.current_schema }} · {{ capture.source }}</div></div>
 </div>
+<div class="callout warn hidden" id="mix-warn">{{ icon('alert') }}<div><b>Başka bir kaynaktan da SQL geliyor.</b> Bu aralıkta Siron'u sizden başka biri ya da bir batch işi kullanıyor olabilir:
+  <span id="mix-list" class="small"></span><div class="xs muted mt8">Durdurduktan sonra yakalama sayfasındaki <b>Kaynaklar</b> bölümünden sizin olmayanları ayıklayabilirsiniz.</div></div></div>
+
+<div class="card marker-card">
+  <div class="card-head"><h2>{{ icon('bookmark') }}İşaretler</h2><span class="meta">Siron'da bir şey yapmadan hemen önce yazıp Enter'a basın: zaman akışında o andan sonraki SQL'ler bu başlıkla gruplanır</span></div>
+  <div class="card-body">
+    <form id="marker-form" class="toolbar" autocomplete="off">
+      <div class="field" style="flex:1"><input type="text" id="marker-label" maxlength="200" placeholder="ör. Müşteri no ile Ara'ya basıyorum" autofocus></div>
+      <button class="btn-primary" id="marker-btn">{{ icon('bookmark') }}İşaret koy</button>
+    </form>
+    <div class="marker-quick">{% for q in ['Ekran açılıyor', 'Ara', 'Detay', 'Sekme değişti', 'Kaydet', 'Yenile'] %}<button type="button" class="btn-ghost btn-sm" data-quick="{{ q }}">{{ q }}</button>{% endfor %}</div>
+    <ol class="marker-list" id="marker-list">{% for m in markers %}<li><span class="mono xs muted">{{ m.ts[11:19] }}</span>{{ m.label }}</li>{% endfor %}</ol>
+  </div>
+</div>
+
 <div class="card">
   <div class="card-head"><h2>{{ icon('activity') }}Canlı akış</h2><span class="meta">her 4 saniyede yenilenir · en yeni üstte</span></div>
   <div class="table-wrap tall"><table id="live"><thead><tr><th class="tight">Saat (UTC)</th><th class="tight">Kullanıcı</th><th class="tight">İşlem</th><th>SQL</th></tr></thead><tbody></tbody></table></div>
@@ -33,6 +48,9 @@
       var st = document.getElementById("status");
       if (d.error) { st.textContent = "hata: " + d.error; st.className = "k-sub err"; return; }
       if (typeof d.elapsed === "number") started = Date.now() - d.elapsed * 1000;
+      var warn = document.getElementById("mix-warn");
+      warn.classList.toggle("hidden", !d.mixed);
+      if (d.mixed) document.getElementById("mix-list").textContent = d.sources.map(function (x) { return x.label + " (" + x.records + ")"; }).join(" · ");
       document.getElementById("count").textContent = d.count + (d.capped ? "+" : "");
       document.getElementById("stmts").textContent = d.statements;
       st.textContent = d.count ? "audit'e yazılıyor" : "henüz kayıt yok"; st.className = "k-sub";
@@ -42,6 +60,24 @@
     }).catch(function () {}).finally(function () { setTimeout(poll, 4000); });
   }
   poll();
+
+  var form = document.getElementById("marker-form"), input = document.getElementById("marker-label"), list = document.getElementById("marker-list");
+  function addMarker(label) {
+    label = (label || "").trim();
+    if (!label) { input.focus(); return; }
+    var body = new URLSearchParams({ label: label });
+    fetch("{{ url_for('siron.capture_marker_add', capture_id=capture.id) }}", {
+      method: "POST", body: body,
+      headers: { "X-CSRF-Token": window.csrfToken, "X-Requested-With": "fetch", "Accept": "application/json" }
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.error) { alert(d.error); return; }
+      var li = document.createElement("li"), t = document.createElement("span");
+      t.className = "mono xs muted"; t.textContent = d.time; li.appendChild(t); li.appendChild(document.createTextNode(d.label));
+      list.appendChild(li); input.value = ""; input.focus();
+    }).catch(function () { alert("İşaret kaydedilemedi."); });
+  }
+  form.addEventListener("submit", function (e) { e.preventDefault(); addMarker(input.value); });
+  document.querySelectorAll("[data-quick]").forEach(function (b) { b.addEventListener("click", function () { addMarker(b.dataset.quick); }); });
 })();
 </script>
 {% endblock %}

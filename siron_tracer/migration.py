@@ -6,7 +6,9 @@ import csv
 import hashlib
 import io
 import os
+import re
 import time
+import unicodedata
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -52,6 +54,48 @@ class Step:
     def count_sql(self) -> str:
         sql = "SELECT COUNT(*) FROM %s" % qualified(self.key)
         return sql + (" WHERE %s" % self.filter if self.filter else "")
+
+
+@dataclass
+class QueryStep:
+    """A screen query generalised for all records (see generalize.py), extracted as-is."""
+    order: int
+    name: str
+    sql: str
+    schema: Optional[str] = None
+    screen: Optional[str] = None
+    note: Optional[str] = None
+    query_id: Optional[int] = None
+    columns: List[str] = field(default_factory=list)
+    target: Optional[str] = None
+    filter: Optional[str] = None
+    num_rows: Optional[int] = None
+    parents: List[ObjectKey] = field(default_factory=list)
+    cycle: bool = False
+
+    @property
+    def key(self) -> ObjectKey:
+        return (None, "Ekran sorgusu: %s" % self.name)
+
+    @property
+    def file_stem(self) -> str:
+        slug = re.sub(r"[^A-Za-z0-9]+", "_", unicodedata.normalize("NFKD", self.name.replace("ı", "i"))
+                      .encode("ascii", "ignore").decode()).strip("_")[:50] or "sorgu"
+        return "E%02d_%s" % (self.order, slug)
+
+    def select_sql(self, catalog=None) -> str:
+        return self.sql.strip().rstrip(";")
+
+    def count_sql(self) -> str:
+        return "SELECT COUNT(*) FROM (%s)" % self.select_sql()
+
+
+def query_steps(queries: List[dict], start: int, default_schema: Optional[str] = None) -> List[QueryStep]:
+    """Saved extraction queries as plan steps, numbered after the table steps."""
+    return [QueryStep(start + n, q["name"], q["sql_text"], q.get("schema") or default_schema,
+                      ((q.get("screen_module") + " > ") if q.get("screen_module") else "") + (q.get("screen_name") or ""),
+                      q.get("note"), q.get("id"))
+            for n, q in enumerate(queries)]
 
 
 def load_order(tables: List[ObjectKey], relations: List[Relation], min_confidence: int = 50):
@@ -125,8 +169,11 @@ def package_zip(steps: List[Step], catalog, mapping_csv: str, generated: str) ->
             w.writerow([s.order, label(s.key), s.target or "", len(s.columns), s.filter or "",
                         s.num_rows if s.num_rows is not None else "", ", ".join(label(p) for p in s.parents),
                         "evet" if s.cycle else ""])
-            z.writestr("sql/%s.sql" % s.file_stem, "-- %s\n%s;\n" % (label(s.key), s.select_sql(catalog)))
-            sqlplus += ["SPOOL %s.csv" % s.file_stem, s.select_sql(catalog) + ";", "SPOOL OFF", ""]
+            schema = getattr(s, "schema", None)
+            prefix = "ALTER SESSION SET CURRENT_SCHEMA = %s;\n" % schema if schema else ""
+            z.writestr("sql/%s.sql" % s.file_stem, "-- %s\n%s%s;\n" % (label(s.key), prefix, s.select_sql(catalog)))
+            sqlplus += ([prefix.strip()] if prefix else []) + \
+                ["SPOOL %s.csv" % s.file_stem, s.select_sql(catalog) + ";", "SPOOL OFF", ""]
             counts.append("SELECT '%s' AS tablo, (%s) AS satir FROM dual" % (label(s.key), s.count_sql()))
         z.writestr("manifest.csv", "﻿" + manifest.getvalue())
         z.writestr("extract_sqlplus.sql", "\n".join(sqlplus) + "\nSET TERMOUT ON\n")
@@ -142,6 +189,8 @@ Tablo sayısı: %(count)d
 
 manifest.csv         Yükleme sırası (önce üst tablolar), hedef, filtre, tahmini satır sayısı
 sql/NN_TABLO.sql     Her tablo için veri çekme sorgusu (kolonlar ve filtre ile)
+sql/ENN_EKRAN.sql    Ekran sorguları: Siron'un ekranda çalıştırdığı SQL, bind filtreleri
+                     kaldırılarak tüm kayıtlar için genelleştirilmiş hali
 extract_sqlplus.sql  SQL*Plus/SQLcl ile tüm tabloları CSV'ye çıkaran betik
 counts.sql           Kaynak satır sayıları (taşıma sonrası mutabakat için)
 kolon_esleme.csv     Kolon eşleme matrisi (durum, hedef alan, notlar)
@@ -164,7 +213,7 @@ def extract(steps: List[Step], stream, out_dir: str, catalog=None, max_rows: int
         digest = hashlib.sha256()
         with open(path, "w", encoding="utf-8-sig", newline="") as fh:
             writer = csv.writer(fh, delimiter=";")
-            gen = stream(s.select_sql(catalog), max_rows or 10 ** 12)
+            gen = stream(s.select_sql(catalog), max_rows or 10 ** 12, getattr(s, "schema", None))
             writer.writerow(next(gen))
             for batch in gen:
                 writer.writerows(batch)

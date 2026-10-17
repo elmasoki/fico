@@ -35,6 +35,21 @@
   {% else %}{{ empty('code', 'Henüz bağlı SQL yok', '<span class="small">Bir yakalamanın SQL detay sayfasında <b>Ekran envanterine bağla</b> ile bu ekranın verisini getiren sorguları işaretleyin.</span>') }}{% endif %}
 </div>
 
+<div class="card" id="extract">
+  <div class="card-head"><h2>{{ icon('package') }}Taşıma sorguları</h2><span class="meta">bu ekranın verisini tüm kayıtlar için getiren sorgular · taşıma paketine girer</span>
+    {% if links %}<div class="tools"><form method="post" action="{{ url_for('siron.screen_extract_all', screen_id=screen.id) }}"><button class="btn-primary btn-sm" data-busy="Üretiliyor" title="Bağlı her SELECT için bind filtreleri kaldırılır">{{ icon('package') }}Bağlı SQL'lerden üret</button></form></div>{% endif %}</div>
+  {% if extract_queries %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Ad</th><th>Kaynak SQL</th><th class="num">Kaldırılan filtre</th><th>Sorgu</th></tr></thead>
+    <tbody>{% for q in extract_queries %}<tr>
+      <td><a class="cell-title" href="{{ url_for('siron.extract_query_page', query_id=q.id) }}">{{ q.name }}</a>{% if q.note %}<span class="cell-sub">{{ q.note }}</span>{% endif %}</td>
+      <td class="small nowrap">{% if q.capture_id and q.sql_id %}<a class="mono" href="{{ url_for('siron.statement', capture_id=q.capture_id, sql_id=q.sql_id) }}">{{ q.sql_id }}</a><span class="cell-sub">{{ q.capture_name or '' }}</span>{% else %}—{% endif %}</td>
+      <td class="num">{{ q.removed|length }}</td>
+      <td class="sqlcell" style="max-width:520px" title="{{ q.sql_text[:2000] }}">{{ q.sql_text }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="card-body small muted">{% if links %}Bağlı SQL'lerden tek tıkla üretebilirsiniz.{% else %}Önce bu ekranın verisini getiren SQL'leri bağlayın.{% endif %}</div>{% endif %}
+</div>
+
 <div class="grid g2">
   <div class="card" style="margin:0">
     <div class="card-head"><h2>{{ icon('record') }}Yakalamalar</h2><span class="meta">{{ captures|length }}</span></div>

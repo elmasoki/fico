@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% from "_macros.html" import icon, table_label, table_link, empty with context %}
 {% block page_title %}Taşıma paketi{% endblock %}
-{% block subtitle %}<p class="sub">"Taşınacak" işaretli tablolar, ilişkilere göre yükleme sırasına dizilir (önce üst tablolar). Paket olarak SQL betiklerini indirin ya da veriyi doğrudan CSV dosyalarına çıkarın.</p>{% endblock %}
+{% block subtitle %}<p class="sub">"Taşınacak" işaretli tablolar ilişkilere göre yükleme sırasına dizilir (önce üst tablolar); ardından ekranlardan üretilen <b>ekran sorguları</b> gelir. Paket olarak SQL betiklerini indirin ya da veriyi doğrudan CSV dosyalarına çıkarın.</p>{% endblock %}
 {% block actions %}
   <a class="btn btn-secondary" href="{{ url_for('siron.migration_zip', mode=mode) }}">{{ icon('download') }}Paketi indir (.zip)</a>
-  <form method="post" action="{{ url_for('siron.migration_extract') }}" class="inline" onsubmit="return confirm('{{ steps|length }} tablo CSV dosyalarına çıkarılacak ({{ settings.export_dir }}). Devam?')">
-    <input type="hidden" name="mode" value="{{ mode }}"><button class="btn-primary" data-busy="Başlatılıyor" {% if not steps %}disabled{% endif %}>{{ icon('play') }}Veriyi çıkar</button></form>
+  <form method="post" action="{{ url_for('siron.migration_extract') }}" class="inline" onsubmit="return confirm('{{ steps|length }} tablo ve {{ query_steps|length }} ekran sorgusu CSV dosyalarına çıkarılacak ({{ settings.export_dir }}). Devam?')">
+    <input type="hidden" name="mode" value="{{ mode }}"><button class="btn-primary" data-busy="Başlatılıyor" {% if not all_steps %}disabled{% endif %}>{{ icon('play') }}Veriyi çıkar</button></form>
 {% endblock %}
 {% block content %}
 <div class="mini-stats mb16">
@@ -13,6 +13,7 @@
   <div class="mini-stat"><b>{{ steps|map(attribute='columns')|map('length')|sum }}</b><span>kolon</span></div>
   <div class="mini-stat"><b>{{ total_rows|thousands }}</b><span>tahmini satır (istatistik)</span></div>
   <div class="mini-stat"><b>{{ steps|selectattr('cycle')|list|length }}</b><span>döngüsel bağımlı</span></div>
+  <a class="mini-stat" href="#queries" style="color:inherit;text-decoration:none"><b>{{ query_steps|length }}</b><span>ekran sorgusu</span></a>
   <div class="mini-stat" style="flex:1"><span>Kolon seçimi</span>
     <form method="get" class="mt8"><select name="mode" onchange="this.form.submit()">{% for k, v in modes.items() %}<option value="{{ k }}" {% if mode == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></form></div>
 </div>
@@ -31,12 +32,27 @@
     {% endfor %}</tbody></table></div>
 </form>
 {% else %}
-<div class="card">{{ empty('package', 'Taşınacak işaretli tablo yok', '<span class="small"><a href="' ~ url_for('siron.tables') ~ '">Tablolar</a> sayfasında tabloları "Taşınacak" olarak işaretleyin.</span>') }}</div>
+<div class="card">{{ empty('package', 'Taşınacak işaretli tablo yok', '<span class="small"><a href="' ~ url_for('siron.tables') ~ '">Tablolar</a> sayfasında tabloları "Taşınacak" olarak işaretleyin ya da aşağıdaki ekran sorgularını kullanın.</span>') }}</div>
 {% endif %}
+<div class="card" id="queries">
+  <div class="card-head"><h2>{{ icon('code') }}Ekran sorguları</h2><span class="meta">Siron'un ekranda çalıştırdığı SQL'in tüm kayıtlar için genelleştirilmiş hali · tablolardan sonra çıkarılır</span></div>
+  {% if query_steps %}
+  <div class="table-wrap"><table>
+    <thead><tr><th class="tight">#</th><th>Ad</th><th>Ekran</th><th>Şema</th><th>SQL</th><th class="tight"></th></tr></thead>
+    <tbody>{% for q in query_steps %}<tr><td class="num"><b>{{ q.order }}</b></td>
+      <td><a class="cell-title" href="{{ url_for('siron.extract_query_page', query_id=q.query_id) }}">{{ q.name }}</a>{% if q.note %}<span class="cell-sub">{{ q.note }}</span>{% endif %}</td>
+      <td class="small">{{ q.screen or '—' }}</td><td class="small mono">{{ q.schema or '' }}</td>
+      <td class="sqlcell" style="max-width:520px" title="{{ q.sql[:2000] }}">{{ q.sql }}</td>
+      <td><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.extract_query_page', query_id=q.query_id) }}">{{ icon('edit') }}</a></td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}{{ empty('code', 'Henüz ekran sorgusu yok', '<span class="small">Bir SQL detay sayfasında <b>Tüm kayıtlar için sorgu üret</b> ile ya da ekran sayfasında <b>Bağlı SQL&#39;lerden üret</b> ile ekleyin.</span>') }}{% endif %}
+</div>
+
 <div class="grid g2">
   <div class="card"><div class="card-head"><h2>{{ icon('file') }}Paket içeriği</h2></div><div class="card-body"><dl class="kv">
     <dt class="mono">manifest.csv</dt><dd>Sıra, tablo, hedef, filtre, tahmini satır, bağımlılık</dd>
     <dt class="mono">sql/NN_TABLO.sql</dt><dd>Her tablo için veri çekme sorgusu</dd>
+    <dt class="mono">sql/ENN_EKRAN.sql</dt><dd>Ekran sorguları (şemasıyla birlikte)</dd>
     <dt class="mono">extract_sqlplus.sql</dt><dd>SQL*Plus / SQLcl ile tümünü CSV'ye spool eder</dd>
     <dt class="mono">counts.sql</dt><dd>Kaynak satır sayıları (mutabakat)</dd>
     <dt class="mono">kolon_esleme.csv</dt><dd>Kolon eşleme matrisi</dd></dl></div></div>

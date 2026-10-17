@@ -18,6 +18,7 @@ from .sqlinsight import USAGE_LABELS, analyse_sql, map_result_columns
 from .sqlutil import (BindSlot, bind_segments, build_slots, find_placeholders, format_sql, parse_audit_binds,
                       substitute_binds)
 from . import knowledge
+from .sessions import assess, breakdown, filter_records, is_mixed
 from .store import parse_ts
 from .web import (CAPTURE_KINDS, STATUSES, capture_analysis, capture_or_404, capture_schema, ctx, ext,
                   find_in_binds, get_catalog, is_sensitive, known_schemas, known_users, literal_for, log, masked,
@@ -32,7 +33,12 @@ def _globals(state):
         STATUSES=STATUSES, USAGE_LABELS=USAGE_LABELS, label=label, format_sql=format_sql, ann=ann,
         CAPTURE_KINDS=CAPTURE_KINDS, SCREEN_STATUSES=SCREEN_STATUSES, MASK_MODES=MASK_MODES,
         JOB_KINDS=JOB_KINDS, RCONF=knowledge.CONFIDENCE, RCONF_HELP=knowledge.CONFIDENCE_HELP,
-        research_of=knowledge.classify, explain_name=knowledge.explain_text)
+        research_of=knowledge.classify, explain_name=knowledge.explain_text, bind_segments_for=_unbound_segments)
+
+
+def _unbound_segments(sql):
+    """Formatted SQL as segments with every placeholder marked (for showing which parts are binds)."""
+    return bind_segments(sql, build_slots(find_placeholders(sql), []), formatted=True)
 
 
 @bp.app_context_processor
@@ -232,17 +238,21 @@ def capture(capture_id):
     _, _, store = ctx()
     capture = capture_or_404(capture_id)
     if capture["status"] == "recording":
-        return render_template("recording.html", capture=capture)
+        return render_template("recording.html", capture=capture, markers=store.markers(capture_id))
     exclude_noise = request.args.get("noise", "1") == "1" and not capture["is_noise"]
     grouped = request.args.get("group", "1") == "1"
     ca = capture_analysis(capture, exclude_noise)
-    records = store.records(capture_id)
+    all_records = store.records(capture_id)
+    sources = breakdown(all_records, capture.get("excluded_sources") or ())
+    records = filter_records(all_records, capture.get("excluded_sources") or ())
     actions = {}
     for r in records:
         actions[r["action"] or "?"] = actions.get(r["action"] or "?", 0) + 1
     relations = relations_for([t.key for t in ca.tables if not t.indirect], ca.insights) if ca.tables else []
     screen = store.get_screen(capture["screen_id"]) if capture["screen_id"] else None
     return render_template("capture.html", capture=capture, ca=ca, record_count=len(records),
+                           sources=sources, source_warnings=assess(sources), mixed=is_mixed(sources),
+                           marker_count=len(store.markers(capture_id)),
                            actions=sorted(actions.items(), key=lambda kv: -kv[1]), exclude_noise=exclude_noise,
                            noise_count=len(store.noise_sql_ids()) if exclude_noise else 0, grouped=grouped,
                            has_catalog=bool(get_catalog()), relations=relations, screen=screen,
@@ -278,7 +288,10 @@ def capture_live(capture_id):
     except Exception as exc:
         return jsonify({"error": str(exc)})
     with_sql = [r for r in rows if r.get("sql_text")]
+    sources = breakdown(rows)
     return jsonify({
+        "sources": [{"label": src.label, "records": src.records} for src in sources],
+        "mixed": is_mixed(sources),
         "elapsed": max(0, int((now_utc - parse_ts(capture["start_utc"])).total_seconds())),
         "count": len(rows), "capped": len(rows) >= 500, "statements": len({r["sql_id"] for r in with_sql}),
         "last": [{"ts": r["ts"][11:19], "user": r.get("db_user"), "action": r["action"],

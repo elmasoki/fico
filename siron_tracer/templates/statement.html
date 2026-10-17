@@ -6,7 +6,8 @@
 {% block eyebrow %}<div class="eyebrow">{{ icon('code') }}{{ st.action or 'SQL' }} · {{ capture.name }}</div>{% endblock %}
 {% block subtitle %}<p class="sub">{{ st.exec_count }} çalışma · {{ st.bind_sets|length }} farklı bind seti · şema <b>{{ schema }}</b>
   {% if variants %} · <span class="badge info">{{ variants|length }} literal varyantı</span>{% endif %}</p>{% endblock %}
-{% block actions %}<a class="btn btn-secondary" href="?rec={{ execution.record_id }}&cursor=1">{{ icon('db') }}GV$SQL bilgisi</a>{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="?rec={{ execution.record_id }}&cursor=1">{{ icon('db') }}GV$SQL bilgisi</a>
+  {% if st.is_select %}<a class="btn btn-primary" href="{{ url_for('siron.statement_extract', capture_id=capture.id, sql_id=st.sql_id) }}" title="Bind filtrelerini kaldırıp aynı veriyi tüm kayıtlar için getiren sorguyu üretir">{{ icon('package') }}Tüm kayıtlar için sorgu üret</a>{% endif %}{% endblock %}
 {% block content %}
 <div class="grid g-main" style="align-items:start">
   <div>

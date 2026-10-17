@@ -58,6 +58,10 @@
         </div>
         <form method="post" action="{{ url_for('siron.start_capture') }}" data-pane-id="live">
           {{ capture_form(users, schemas, screens, 'live') }}
+          <div class="activity-check mt8">
+            <button type="button" class="btn-secondary btn-sm" id="activity-btn">{{ icon('user') }}Şu an Siron'u kullanan var mı?</button>
+            <div id="activity-result" class="small mt8"></div>
+          </div>
           <button class="btn-rec btn-lg btn-block mt8" data-busy="Başlatılıyor">{{ icon('record') }}Kaydı başlat</button>
           <p class="xs muted mt8 mb0">Başlangıç zamanı veritabanı saatinden alınır. Sonra Siron'da ekranı açıp işlemi yapın.</p>
         </form>
@@ -94,6 +98,33 @@
   });
   form.querySelectorAll("[data-confirm]").forEach(function (b) {
     b.addEventListener("click", function (e) { if (!confirm(b.dataset.confirm)) e.preventDefault(); });
+  });
+})();
+(function () {
+  var btn = document.getElementById("activity-btn"), out = document.getElementById("activity-result");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    var f = btn.closest("form"), users = [];
+    f.querySelectorAll("input[name=db_users]:checked").forEach(function (c) { users.push(c.value); });
+    var extra = f.querySelector("input[name=new_users]");
+    if (extra && extra.value.trim()) users = users.concat(extra.value.split(/[,;\s]+/));
+    var src = f.querySelector("select[name=source]");
+    out.className = "small mt8 muted"; out.textContent = "Son 5 dakikanın audit kayıtlarına bakılıyor…";
+    fetch("{{ url_for('siron.capture_activity_check') }}?minutes=5&users=" + encodeURIComponent(users.join(",")) + (src ? "&source=" + src.value : ""))
+      .then(function (r) { return r.json(); }).then(function (d) {
+        out.innerHTML = "";
+        if (d.error) { out.className = "small mt8 err"; out.textContent = "Kontrol edilemedi: " + d.error; return; }
+        if (!d.records) { out.className = "small mt8 ok"; out.textContent = "✓ Son " + d.minutes + " dakikada " + d.users.join(", ") + " ile hiç SQL çalışmamış. Kayıt için uygun."; return; }
+        out.className = "small mt8 warn";
+        var head = document.createElement("div");
+        head.textContent = "⚠ Son " + d.minutes + " dakikada " + d.records + " SQL çalışmış. Kaydı başlatırsanız bunlar yakalamanıza karışabilir:";
+        out.appendChild(head);
+        d.sources.forEach(function (x) {
+          var row = document.createElement("div"); row.className = "xs";
+          row.textContent = "• " + x.label + " — " + x.records + " SQL, " + x.sessions + " oturum, son " + x.last;
+          out.appendChild(row);
+        });
+      }).catch(function () { out.className = "small mt8 err"; out.textContent = "Kontrol edilemedi."; });
   });
 })();
 document.querySelectorAll("[data-pane]").forEach(function (a) {

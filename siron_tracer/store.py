@@ -106,6 +106,15 @@ CREATE TABLE IF NOT EXISTS activity (
     detail TEXT, sql_text TEXT, rows INTEGER
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS capture_markers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    capture_id INTEGER NOT NULL, ts TEXT NOT NULL, label TEXT NOT NULL, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS extract_queries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL, screen_id INTEGER, capture_id INTEGER, sql_id TEXT,
+    sql_text TEXT NOT NULL, removed TEXT, note TEXT, created_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS screen_sqls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     screen_id INTEGER NOT NULL, capture_id INTEGER NOT NULL, sql_id TEXT NOT NULL,
@@ -122,6 +131,7 @@ MIGRATIONS = [
     ("captures", "screen_id", "INTEGER"),
     ("annotations", "sensitive", "INTEGER"),
     ("annotations", "extract_filter", "TEXT"),
+    ("captures", "excluded_sources", "TEXT"),
 ]
 
 TS_FMT = "%Y-%m-%d %H:%M:%S.%f"
@@ -213,7 +223,7 @@ class Store:
             self._bump()
 
     def update_capture(self, capture_id: int, **fields):
-        allowed = {"name", "notes", "is_noise", "message", "kind", "screen_id", "schema_name"}
+        allowed = {"name", "notes", "is_noise", "message", "kind", "screen_id", "schema_name", "excluded_sources"}
         cols = [k for k in fields if k in allowed]
         if not cols:
             return
@@ -234,6 +244,8 @@ class Store:
             db.executemany("DELETE FROM records WHERE capture_id = ?", ids)
             db.executemany("UPDATE snapshots SET capture_id = NULL WHERE capture_id = ?", ids)
             db.executemany("DELETE FROM screen_sqls WHERE capture_id = ?", ids)
+            db.executemany("DELETE FROM capture_markers WHERE capture_id = ?", ids)
+            db.executemany("UPDATE extract_queries SET capture_id = NULL WHERE capture_id = ?", ids)
             deleted = sum(db.execute("DELETE FROM captures WHERE id = ?", i).rowcount for i in ids)
             self._bump()
         return deleted
@@ -427,8 +439,81 @@ class Store:
         with self._lock, self._conn() as db:
             db.execute("UPDATE captures SET screen_id = NULL WHERE screen_id = ?", (screen_id,))
             db.execute("DELETE FROM screen_sqls WHERE screen_id = ?", (screen_id,))
+            db.execute("UPDATE extract_queries SET screen_id = NULL WHERE screen_id = ?", (screen_id,))
             db.execute("DELETE FROM screens WHERE id = ?", (screen_id,))
             self._bump()
+
+    # ------------------------------------------------------------------ recording markers
+    def add_marker(self, capture_id: int, ts: str, label: str) -> int:
+        with self._lock, self._conn() as db:
+            return db.execute("INSERT INTO capture_markers (capture_id, ts, label, created_at) VALUES (?,?,?,?)",
+                              (capture_id, ts, label, now())).lastrowid
+
+    def markers(self, capture_id: int) -> List[dict]:
+        with self._conn() as db:
+            return [dict(r) for r in db.execute("SELECT * FROM capture_markers WHERE capture_id = ? ORDER BY ts, id",
+                                                (capture_id,)).fetchall()]
+
+    def get_marker(self, marker_id: int) -> Optional[dict]:
+        with self._conn() as db:
+            row = db.execute("SELECT * FROM capture_markers WHERE id = ?", (marker_id,)).fetchone()
+            return dict(row) if row else None
+
+    def update_marker(self, marker_id: int, label: str):
+        with self._lock, self._conn() as db:
+            db.execute("UPDATE capture_markers SET label = ? WHERE id = ?", (label, marker_id))
+
+    def delete_marker(self, marker_id: int):
+        with self._lock, self._conn() as db:
+            db.execute("DELETE FROM capture_markers WHERE id = ?", (marker_id,))
+
+    # ------------------------------------------------------------------ extraction queries
+    def add_extract_query(self, name: str, sql_text: str, screen_id: Optional[int] = None,
+                          capture_id: Optional[int] = None, sql_id: Optional[str] = None,
+                          removed: Optional[List[str]] = None, note: Optional[str] = None) -> int:
+        """Save a generalised screen query; the same capture + SQL_ID + screen is updated, not duplicated."""
+        with self._lock, self._conn() as db:
+            row = None
+            if sql_id:
+                row = db.execute("SELECT id FROM extract_queries WHERE sql_id = ? AND IFNULL(capture_id, 0) = ? "
+                                 "AND IFNULL(screen_id, 0) = ?", (sql_id, capture_id or 0, screen_id or 0)).fetchone()
+            payload = (name, screen_id, capture_id, sql_id, sql_text, json.dumps(removed or [], ensure_ascii=False),
+                       note or None)
+            if row:
+                db.execute("UPDATE extract_queries SET name = ?, screen_id = ?, capture_id = ?, sql_id = ?, "
+                           "sql_text = ?, removed = ?, note = ? WHERE id = ?", payload + (row[0],))
+                return row[0]
+            return db.execute("INSERT INTO extract_queries (name, screen_id, capture_id, sql_id, sql_text, removed, "
+                              "note, created_at) VALUES (?,?,?,?,?,?,?,?)", payload + (now(),)).lastrowid
+
+    def extract_queries(self, screen_id: Optional[int] = None) -> List[dict]:
+        sql = ("SELECT q.*, s.name AS screen_name, s.module AS screen_module, c.name AS capture_name, "
+               "c.start_local AS capture_start FROM extract_queries q "
+               "LEFT JOIN screens s ON s.id = q.screen_id LEFT JOIN captures c ON c.id = q.capture_id")
+        args: list = []
+        if screen_id is not None:
+            sql += " WHERE q.screen_id = ?"
+            args.append(screen_id)
+        sql += " ORDER BY s.module, s.name, q.id"
+        with self._conn() as db:
+            out = []
+            for r in db.execute(sql, args).fetchall():
+                d = dict(r)
+                d["removed"] = json.loads(d["removed"] or "[]")
+                out.append(d)
+            return out
+
+    def get_extract_query(self, query_id: int) -> Optional[dict]:
+        return next((q for q in self.extract_queries() if q["id"] == query_id), None)
+
+    def update_extract_query(self, query_id: int, name: str, sql_text: str, note: Optional[str] = None):
+        with self._lock, self._conn() as db:
+            db.execute("UPDATE extract_queries SET name = ?, sql_text = ?, note = ? WHERE id = ?",
+                       (name, sql_text, note or None, query_id))
+
+    def delete_extract_query(self, query_id: int):
+        with self._lock, self._conn() as db:
+            db.execute("DELETE FROM extract_queries WHERE id = ?", (query_id,))
 
     # ------------------------------------------------------------------ screen <-> SQL links
     def link_sql(self, screen_id: int, capture_id: int, sql_id: str, note: Optional[str] = None) -> int:
@@ -586,6 +671,7 @@ def _capture(row) -> dict:
     d = dict(row)
     d["db_users"] = [u for u in (d.get("db_users") or d.get("db_user") or "").split(",") if u]
     d["kind"] = d.get("kind") or "screen"
+    d["excluded_sources"] = json.loads(d.get("excluded_sources") or "[]")
     return d
 
 

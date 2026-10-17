@@ -10,7 +10,7 @@ from flask import Response, abort, flash, jsonify, redirect, render_template, re
 
 from .catalog import label
 from .coverage import SCREEN_STATUSES, compute as compute_coverage, screen_status
-from .migration import COLUMN_MODES, build_plan, extract, package_zip
+from .migration import COLUMN_MODES, QueryStep, build_plan, extract, package_zip, query_steps
 from .views import bp, csv_response
 from .views_reports import mapping_rows
 from .web import (ann, capture_analysis, ctx, ext, get_catalog, known_schemas, known_users, log, project_analysis,
@@ -71,7 +71,8 @@ ACTIONS = {"query": "Sorgu çalıştırma", "export_csv": "CSV dışa aktarma", 
            "snapshot": "Rapora ekleme", "export_zip": "Taşıma paketi", "extract": "Veri çıkarma",
            "catalog": "Veri sözlüğü", "profile": "Veri profili", "relcheck": "İlişki doğrulama",
            "search": "Değer arama", "export_er": "ER dışa aktarma", "settings": "Ayarlar",
-           "capture_delete": "Yakalama silme", "capture_reset": "Yakalama sıfırlama", "research": "Araştırma belgesi"}
+           "capture_delete": "Yakalama silme", "capture_reset": "Yakalama sıfırlama", "research": "Araştırma belgesi",
+           "capture_sources": "Kaynak ayıklama", "extract_query": "Ekran sorgusu"}
 
 
 # --------------------------------------------------------------------------- settings
@@ -177,6 +178,7 @@ def screen_page(screen_id):
         entry["status"] = ann(annotations, entry["key"]).get("status") or ""
     return render_template("screen.html", screen=screen, status=screen_status(screen, store.list_captures()),
                            modules=sorted({s["module"] for s in store.list_screens() if s["module"]}),
+                           extract_queries=store.extract_queries(screen_id),
                            captures=captures, links=links, tables=sorted(tables.values(), key=lambda e: e["key"][1]))
 
 
@@ -242,15 +244,30 @@ def coverage():
 
 # --------------------------------------------------------------------------- migration package
 
-def _plan(mode):
-    _, _, store = ctx()
+def _plan(mode, with_queries: bool = True):
+    settings, _, store = ctx()
     catalog = get_catalog()
     pa = project_analysis()
     used = {}
     for col in pa.columns:
         used.setdefault(col[:2], set()).add(col[2])
     rels = project_relations()
-    return build_plan(catalog, store.annotations(), rels, used, mode), catalog, pa
+    steps = build_plan(catalog, store.annotations(), rels, used, mode)
+    if with_queries:
+        steps += query_steps(_extract_queries(), len(steps) + 1, settings.current_schema)
+    return steps, catalog, pa
+
+
+def _extract_queries():
+    """Saved screen queries with the schema their capture ran in."""
+    store = ctx()[2]
+    captures = {c["id"]: c for c in store.list_captures()}
+    out = []
+    for q in store.extract_queries():
+        c = captures.get(q["capture_id"])
+        q["schema"] = (c or {}).get("schema_name")
+        out.append(q)
+    return out
 
 
 @bp.route("/migration", methods=["GET", "POST"])
@@ -266,8 +283,10 @@ def migration():
         return redirect(url_for(".migration", mode=mode))
     steps, catalog, pa = _plan(mode)
     runs = [j for j in store.list_jobs(50, "extract")]
-    return render_template("migration.html", steps=steps, mode=mode, modes=COLUMN_MODES, runs=runs,
-                           catalog=catalog, total_rows=sum(s.num_rows or 0 for s in steps))
+    table_steps = [s for s in steps if not isinstance(s, QueryStep)]
+    return render_template("migration.html", steps=table_steps, query_steps=[s for s in steps if isinstance(s, QueryStep)],
+                           all_steps=steps, mode=mode, modes=COLUMN_MODES, runs=runs, catalog=catalog,
+                           total_rows=sum(s.num_rows or 0 for s in table_steps))
 
 
 @bp.route("/migration.zip")
@@ -285,7 +304,7 @@ def migration_zip():
                     r["ann"].get("status") or r["table_ann"].get("status") or "", "evet" if r["sensitive"] else "",
                     r["ann"].get("target") or "", r["ann"].get("note") or ""])
     data = package_zip(steps, catalog, "﻿" + buf.getvalue(), datetime.now().strftime("%Y-%m-%d %H:%M"))
-    log("export_zip", "Taşıma paketi: %d tablo (%s)" % (len(steps), mode))
+    log("export_zip", "Taşıma paketi: %d adım (%s)" % (len(steps), mode))
     return Response(data, mimetype="application/zip", headers={
         "Content-Disposition": "attachment; filename=siron_tasima_paketi_%s.zip" % datetime.now().strftime("%Y%m%d_%H%M")})
 
@@ -296,13 +315,14 @@ def migration_extract():
     mode = request.form.get("mode", "decided")
     steps, catalog, _ = _plan(mode)
     if not steps:
-        flash("Taşınacak işaretli tablo yok.", "error")
+        flash("Taşınacak işaretli tablo veya kayıtlı ekran sorgusu yok.", "error")
         return redirect(url_for(".migration"))
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_dir = os.path.join(os.path.abspath(settings.export_dir), stamp)
 
     def work(job):
-        result = extract(steps, lambda sql, n: oracle.stream_select(sql, n, batch=5000), out_dir, catalog,
+        result = extract(steps, lambda sql, n, schema=None: oracle.stream_select(sql, n, batch=5000, schema=schema),
+                         out_dir, catalog,
                          settings.extract_max_rows, lambda p, m: job.progress(p, m))
         result["run"] = stamp
         store.log("extract", "Veri çıkarma %s: %d tablo, %d satır" % (stamp, len(result["files"]),
@@ -310,7 +330,7 @@ def migration_extract():
         job.message = "%d tablo, %s satır → %s" % (len(result["files"]), result["total_rows"], out_dir)
         return result
 
-    job_id = ext()["jobs"].submit("extract", "Veri çıkarma: %d tablo" % len(steps), work, {"mode": mode, "run": stamp})
+    job_id = ext()["jobs"].submit("extract", "Veri çıkarma: %d adım" % len(steps), work, {"mode": mode, "run": stamp})
     return redirect(url_for(".job", job_id=job_id))
 
 

@@ -17,6 +17,9 @@ eşleme kararlarını yönetir ve taşınacak veriyi paketler.
 |---|---|
 | Bu ekran hangi tabloları kullanıyor? | **Ekran yakalama** — Başlat → Siron'da ekranı kullan → Durdur. Birden çok DB kullanıcısı ve yakalamaya özel şema seçilebilir. Canlı akış izlenir. |
 | Gece çalışan işler ne yapıyor? | **Batch yakalama** — geçmiş zaman aralığı; yalnız batch'te görülen tablolar ayrıca raporlanır |
+| Yakaladığım SQL'leri tüm kayıtlar için nasıl çekerim? | **Taşıma sorgusu üretme** — SQL detay sayfasında "Tüm kayıtlar için sorgu üret" (veya ekran sayfasında bağlı SQL'lerin hepsi için tek tıkla): bind değerine bağlı filtreler ve sayfalama (ROWNUM, FETCH FIRST) kaldırılır, join'ler, kolonlar ve sabit filtreler (`HISTBIS = '9999'`) korunur. Kaldırılan/korunan koşullar listelenir; satır sayısı, önizleme, CSV ve taşıma paketine ekleme (kendi şemasıyla, SQL*Plus betiği dahil) |
+| Kayıt sırasında ne yaptığımı nasıl not ederim? | **Kayıt işaretleri** — kayıt ekranında "Ara'ya basıyorum" yazıp Enter (veya hazır düğmeler); işaret veritabanı saatiyle kaydedilir, zaman akışında o andan sonraki SQL'ler bu başlıkla ayrı bir adım olur ve ekrana bağlarken not olarak gelir. Sonradan da her adıma ad verilebilir |
+| Yakalamama başkasının SQL'i karıştı mı? | **Kaynak kontrolü** — her yakalamada SQL'leri çalıştıran OS kullanıcısı / makine / program / client id dökümü; birden fazla kaynak varsa uyarı, sizin olmayan kaynakları analizden çıkarma; kayıt sırasında canlı uyarı; kayıttan önce "Şu an Siron'u kullanan var mı?" kontrolü (son 5 dakika) |
 | Hangi tıklama hangi SQL'i çalıştırdı? | **Zaman akışı** — yakalamadaki SQL'ler çalışma sırasıyla, duraklamalara göre **adımlara** bölünür (eşik ayarlanabilir); her adımın süresi, tabloları ve bind değerleri görünür. **Yakalama karşılaştırma** — iki yakalamada ortak ve yalnız birinde görülen tablolar, SQL kalıpları, kolonlar ("Detay" düğmesine basınca ne değişti?) |
 | Ekranda gördüğüm değer hangi sorguya gitti? | **Bind değerinde arama** — genel arama ve "Ekrandaki değeri bul", değeri audit'teki bind'lerde de arar: arama kriteri olarak girilen müşteri no'nun hangi SQL'e parametre olarak gittiği bulunur |
 | Bu ekranın verisi hangi sorgudan geliyor? | **Ekran envanterine SQL bağlama** — SQL detayından veya zaman akışında toplu seçimle bir SQL'i ekrana bağlayın ve "ne getiriyor" notu düşün; envanterde ve **ekran sayfasında** SQL_ID, yakalama adı ve yakalama tarihiyle listelenir, Excel'e de çıkar. Bindleri yerleştirilmiş SQL'de değerler **vurgulanır** ve bind satırıyla eşleşir |
@@ -78,19 +81,21 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
 2. **Ekran envanteri**'ne Siron ekranlarını toplu girin (`Modül > Ekran`, Excel'den yapıştırılabilir).
 3. Siron'da hiçbir şey yapmadan kısa bir yakalama alıp **Gürültü olarak işaretleyin**. Hatalı veya deneme yakalamalarını
    listeden tek tek ya da toplu silebilirsiniz (eşleme kararları silinmez).
-4. Her ekran için yakalama alın (envanterden seçerek). Ekrana gelene kadar başka yerlerde gezindiyseniz kayıt
+4. Her ekran için yakalama alın (envanterden seçerek). Başlatmadan önce **Şu an Siron'u kullanan var mı?** ile ortamın
+   boş olduğunu kontrol edin; kayıt sırasında her tıklamadan önce bir **işaret** koyun ("Ara", "Hesaplar sekmesi"). Ekrana gelene kadar başka yerlerde gezindiyseniz kayıt
    sırasında **Sıfırla**'ya basın: o ana kadar yakalananlar atılır, kayıt devam eder. Gece işleri için **Geçmiş aralık / batch**.
 5. Yakalanan tabloların ne olduğunu **Araştırma** bölümünden ve tablo sayfasındaki araştırma notundan okuyun; hipotezleri
    **Doğrulama sorguları** ile kendi veritabanınızda test edin.
 6. Yakalamanın **Zaman akışı** sekmesinde adımları Siron'daki tıklamalarınızla eşleştirin; ekranın verisini getiren
    SQL'leri seçip **ekrana bağlayın** (envanterde SQL_ID, yakalama adı ve tarihiyle görünür). Ekranda gördüğünüz bir
-   numarayı genel aramaya yazarak hangi SQL'e bind olarak gittiğini bulun.
+   numarayı genel aramaya yazarak hangi SQL'e bind olarak gittiğini bulun. Yakalama özetinde **Kaynaklar** uyarı
+   veriyorsa sizin olmayan kaynakları ayıklayın.
 7. Ekranın **Kolonlar** sekmesi ve **Ekrandaki değeri bul** ile alanları kolonlara bağlayın.
 8. **Tablolar**'da toplu karar verin, önemli tabloları **profilleyin**, tablo sayfasında kolon kararlarını,
    hedef alanları ve hassasiyeti girin — veya **Excel eşleme** ile analistlere dağıtın.
 9. **İlişkiler** → **Tümünü veriyle doğrula**; **ER diyagramı** ile modeli gözden geçirin.
 10. **Kapsam** sayfasında açık kalanları kapatın (yakalanmayan ekranlar, görünmeyen tablolar).
-11. **Taşıma paketi**: filtreleri girin, paketi indirin veya veriyi çıkarın. **Raporlar**'dan dokümanı üretin.
+11. Ekranın verisini getiren SQL'lerden **taşıma sorgusu** üretin (ekran sayfasında tek tıkla); **Taşıma paketi**: filtreleri girin, paketi indirin veya veriyi çıkarın. **Raporlar**'dan dokümanı üretin.
 
 ## Ekranlar
 
@@ -113,7 +118,9 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
 | ![Tablo sayfasında araştırma notu](docs/screenshots/26_tablo_arastirma_notu.png) | ![Bind değerleri vurgulu SQL](docs/screenshots/27_bind_vurgulama.png) |
 | ![Zaman akışı](docs/screenshots/28_zaman_akisi.png) | ![Ekran sayfası](docs/screenshots/29_ekran_sayfasi.png) |
 | ![Envanterde bağlı SQL'ler](docs/screenshots/30_envanter_sql.png) | ![Yakalama karşılaştırma](docs/screenshots/31_karsilastirma.png) |
-| ![Bind değerinde arama](docs/screenshots/32_bind_arama.png) | |
+| ![Bind değerinde arama](docs/screenshots/32_bind_arama.png) | ![Kayıt işaretleri ve canlı kaynak uyarısı](docs/screenshots/33_kayit_isaretleri.png) |
+| ![Kaynak karışması ve ayıklama](docs/screenshots/34_kaynak_karismasi.png) | ![İşaretli zaman akışı](docs/screenshots/35_zaman_akisi_isaretli.png) |
+| ![Taşıma sorgusu üretme](docs/screenshots/36_tasima_sorgusu.png) | ![Taşıma paketinde ekran sorguları](docs/screenshots/37_tasima_ekran_sorgulari.png) |
 
 ## Araştırma bölümü
 
@@ -179,6 +186,7 @@ entegrasyon testlerini çalıştırır (`.github/workflows/ci.yml`).
 | `profiling.py`, `finder.py`, `privacy.py` | Veri profili, değer arama, hassas veri ve maskeleme |
 | `coverage.py`, `migration.py`, `excel.py` | Kapsam, taşıma paketi ve veri çıkarma, Excel gidiş-dönüş |
 | `knowledge/`, `mdrender.py` | Siron araştırması: modüller, önek aileleri, tablo ve terim sözlüğü, doğrulama sorguları, belge (Markdown) |
-| `analysis.py`, `jobs.py`, `timeline.py` | Ekran/proje analizi, arka plan işleri, yakalama zaman akışı (adımlar) |
+| `analysis.py`, `jobs.py`, `timeline.py` | Ekran/proje analizi, arka plan işleri, yakalama zaman akışı (adımlar, işaretler) |
+| `generalize.py`, `sessions.py` | Ekran SQL'inden taşıma sorgusu üretme, yakalamadaki kaynak (kullanıcı/makine/program) analizi |
 | `sources.py`, `oracle.py`, `store.py` | Audit kaynakları, Oracle erişimi, SQLite deposu |
 | `views*.py`, `templates/`, `static/` | Arayüz ve raporlar |

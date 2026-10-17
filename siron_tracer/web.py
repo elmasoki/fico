@@ -10,6 +10,7 @@ from .analysis import CaptureAnalysis, ProjectAnalysis, analyse, analyse_project
 from .catalog import ann, label
 from .layout import layout
 from .relations import Relation, build_relations
+from .sessions import filter_records
 from .privacy import MASK_MODES, Privacy, mask_rows
 from .sqlutil import build_slots, find_placeholders, parse_audit_binds, substitute_binds
 
@@ -91,13 +92,18 @@ def capture_or_404(capture_id: int):
     return capture
 
 
+def capture_records(capture) -> List[dict]:
+    """The capture's audit records without the sources the user excluded (other users, batch jobs)."""
+    return filter_records(ctx()[2].records(capture["id"]), capture.get("excluded_sources") or ())
+
+
 def capture_analysis(capture, exclude_noise: bool = True) -> CaptureAnalysis:
     store = ctx()[2]
     key = ("capture", capture["id"], exclude_noise, _version())
     cache = _cache()
     if key not in cache:
         noise = store.noise_sql_ids() if exclude_noise and not capture["is_noise"] else None
-        cache[key] = analyse(store.records(capture["id"]), get_catalog(), capture_schema(capture), noise)
+        cache[key] = analyse(capture_records(capture), get_catalog(), capture_schema(capture), noise)
         _trim(cache)
     return cache[key]
 
@@ -107,7 +113,9 @@ def project_analysis() -> ProjectAnalysis:
     key = ("project", _version())
     cache = _cache()
     if key not in cache:
-        cache[key] = analyse_project(store.list_captures(), store.records, get_catalog(),
+        captures = store.list_captures()
+        by_id = {c["id"]: c for c in captures}
+        cache[key] = analyse_project(captures, lambda cid: capture_records(by_id[cid]), get_catalog(),
                                      settings.current_schema, store.noise_sql_ids())
         _trim(cache)
     return cache[key]
