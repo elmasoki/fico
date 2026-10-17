@@ -27,17 +27,15 @@ Makinede internet yoksa paketleri başka bir makinede indirip taşıyın:
 `pip download -r requirements.txt -d wheels` → hedefte `pip install --no-index --find-links wheels -r requirements.txt`
 (iki makinenin Python sürümü / işletim sistemi aynı olmalı).
 
-## Oracle tarafı (DBA)
+## Oracle tarafı
 
-| Adım | Betik |
-|---|---|
-| Okuyucu kullanıcı ve yetkiler | `sql/01_reader_user.sql` |
-| Audit aç (19c unified, örnek) | `sql/02_unified_audit_on.sql` |
-| İş bitince kapat / temizle | `sql/04_audit_off_cleanup.sql` |
+Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama audit politikasının adından ve
+kapsamından bağımsızdır; `UNIFIED_AUDIT_TRAIL`'i yalnızca `config.ini` → `[siron] db_user`
+kullanıcısına ve zaman aralığına göre okur. Tek şart, Siron'un bağlandığı DB kullanıcısının
+audit kapsamında olmasıdır.
 
-Uygulama audit politikasının adından ve kapsamından bağımsızdır; `UNIFIED_AUDIT_TRAIL`'i
-yalnızca `config.ini` → `[siron] db_user` kullanıcısına ve zaman aralığına göre okur.
-Tek şart, Siron'un bağlandığı DB kullanıcısının audit kapsamında olmasıdır.
+Uygulama kendi (DBA) kullanıcınızla bağlanabilir. "Kurulum kontrolü" sayfasında
+`UNIFIED_AUDIT_TRAIL` için yetki hatası görürseniz: `GRANT AUDIT_VIEWER TO <kullanıcınız>;`
 
 ## Ekranlar
 
@@ -51,10 +49,10 @@ Tek şart, Siron'un bağlandığı DB kullanıcısının audit kapsamında olmas
 
 Önemli noktalar:
 
-1. **Uygulama ayrı bir kullanıcıyla bağlanmalı** (örn. `SIRON_TRACER`). Siron kullanıcısıyla bağlanırsanız
-   bu uygulamanın sorguları da audit'e düşer. Sorgular çalıştırılırken
+1. **Uygulama Siron kullanıcısıyla bağlanmamalı**; yoksa bu uygulamanın sorguları da Siron'unkilere karışır.
+   Sorgular çalıştırılırken
    `ALTER SESSION SET CURRENT_SCHEMA = SIRON` yapılır, böylece Siron'un şemasız yazdığı SQL'ler çalışır.
-2. **Audit politikası yeni oturumlarda devreye girer.** Politikayı açtıktan sonra Siron'un connection
+2. **Audit yeni oturumlarda devreye girer.** Audit'i açtıktan sonra Siron'un connection
    pool'unu / uygulama sunucusunu yeniden başlatın.
 3. Mümkünse **test ortamında ve tek başınıza** çalışın. Siron bir uygulama sunucusundan tek DB kullanıcısıyla
    bağlandığı için başka kullanıcıların ve arka plan işlerinin SQL'leri de aynı aralığa düşer.

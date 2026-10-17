@@ -2,7 +2,7 @@
 {% block content %}
 <h1>Kurulum kontrolü</h1>
 <p class="small muted">Hata görünen satırlar her zaman sorun değildir: örneğin unified auditing kullanıyorsanız traditional kontrolleri hata verebilir.
-  Gerekli audit ve yetki komutları için <code>sql/</code> klasörüne bakın.</p>
+  <code>UNIFIED_AUDIT_TRAIL</code> yetki hatası verirse: <code>GRANT AUDIT_VIEWER TO &lt;kullanıcınız&gt;;</code></p>
 <table>
   <tr><th>Kontrol</th><th>Durum</th><th>Sonuç</th></tr>
   {% for title, ok, detail in checks %}
