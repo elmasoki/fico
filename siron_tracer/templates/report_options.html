@@ -16,7 +16,8 @@
     <label class="check"><input type="checkbox" name="sql" value="1" checked><span>SQL'ler<small>Biçimlendirilmiş SQL ve bindleri yerleştirilmiş hali</small></span></label>
     <label class="check"><input type="checkbox" name="profiles" value="1" checked><span>Veri profilleri<small>Doluluk, farklı değer, örnek değerler (hassas olanlar maskeli)</small></span></label>
     <label class="check"><input type="checkbox" name="snapshots" value="1" checked><span>Kayıtlı sorgu sonuçları <a href="{{ url_for('siron.snapshots') }}">(listeyi gör)</a></span></label>
-    <input type="hidden" name="sql" value="0"><input type="hidden" name="snapshots" value="0"><input type="hidden" name="profiles" value="0">
+    <label class="check"><input type="checkbox" name="research" value="1" checked><span>Araştırma notları<small>Her tablonun Siron modülü, araştırmaya göre anlamı ve güven derecesi; modül özeti</small></span></label>
+    <input type="hidden" name="sql" value="0"><input type="hidden" name="snapshots" value="0"><input type="hidden" name="profiles" value="0"><input type="hidden" name="research" value="0">
   </div>
   <div class="card-foot"><button class="btn-primary">{{ icon('ext') }}Raporu aç</button><button name="download" value="1" class="btn-secondary">{{ icon('download') }}HTML indir</button></div>
 </form>

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, research_tabs with context %}
+{% block page_title %}Doğrulama sorguları{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.research') }}">Araştırma</a>{{ icon('chev') }}<b>Doğrulama sorguları</b>{% endblock %}
+{% block subtitle %}<p class="sub">Araştırmadaki hipotezleri kendi veritabanınızda doğrulamak için hazır sorgular, seçtiğiniz şemaya göre. SELECT olanları doğrudan uygulamada, salt-okunur çalıştırabilirsiniz.</p>{% endblock %}
+{% block content %}
+{{ research_tabs(tab) }}
+<form class="filters card" method="get" style="padding:12px 16px">
+  <div class="field"><label class="lbl">Şema</label><select name="schema" onchange="this.form.submit()">
+    {% for s in schemas %}<option {% if s == schema %}selected{% endif %}>{{ s }}</option>{% endfor %}{% if schema not in schemas %}<option selected>{{ schema }}</option>{% endif %}</select></div>
+  <span class="spacer"></span>
+  <span class="small muted">{{ kb.QUERIES|length }} sorgu · PL/SQL olanlar yalnız kopyalanır (SQL*Plus / SQL Developer)</span>
+</form>
+{% for cat, queries in groups %}{% if queries %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('code') }}{{ cat }}</h2><span class="meta">{{ queries|length }}</span></div>
+  <div class="card-body grid g2" style="gap:14px">
+  {% for q in queries %}{% set sql = q.for_schema(schema) %}
+    <div class="qcard" id="q-{{ q.id }}" style="border:1px solid var(--line);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px;min-width:0">
+      <div><b>{{ q.title }}</b>{% if not q.runnable %} <span class="badge warn">PL/SQL</span>{% endif %}</div>
+      <div class="small muted">{{ q.purpose }}</div>
+      {% if q.needs %}<div class="xs" style="color:var(--warn)">{{ icon('alert') }} {{ q.needs }}</div>{% endif %}
+      <pre><code>{{ sql }}</code></pre>
+      <div class="toolbar" style="margin-top:auto">
+        {% if q.runnable %}
+        <form method="post" action="{{ url_for('siron.sql_runner') }}" class="inline"><input type="hidden" name="sql" value="{{ sql }}"><input type="hidden" name="schema" value="{{ schema }}"><input type="hidden" name="do" value="run">
+          <button class="btn-primary btn-sm" data-busy="Çalışıyor">{{ icon('play') }}Çalıştır</button></form>
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('siron.sql_runner', sql=sql, schema=schema) }}">{{ icon('edit') }}Konsolda düzenle</a>
+        {% endif %}
+        <button type="button" class="btn-ghost btn-sm" data-copy="q-{{ q.id }}">{{ icon('copy') }}Kopyala</button>
+        {% if q.app %}<span class="spacer"></span><a class="xs" href="{{ url_for('siron.' ~ q.app) }}">Uygulamada karşılığı{{ icon('chev') }}</a>{% endif %}
+      </div>
+    </div>
+  {% endfor %}
+  </div>
+</div>
+{% endif %}{% endfor %}
+{% endblock %}
+{% block scripts %}
+<script>
+document.querySelectorAll("[data-copy]").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var text = document.querySelector("#" + b.dataset.copy + " pre").innerText;
+    var done = function () { var t = b.lastChild.textContent; b.lastChild.textContent = "Kopyalandı"; setTimeout(function () { b.lastChild.textContent = t; }, 1500); };
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {}); else {
+      var ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand("copy"); ta.remove(); done();
+    }
+  });
+});
+</script>
+{% endblock %}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from flask import Response, abort, flash, redirect, render_template, request, url_for
 
+from . import knowledge
 from .catalog import label
 from .profiling import quality_flags
 from .relations import (SOURCE_LABELS, build_select, find_join_tree, parse_relation_id, qualified,
@@ -53,6 +54,7 @@ def tables():
     show_all = request.args.get("all") == "1" and catalog
     q = request.args.get("q", "").strip().upper()
     status = request.args.get("status", "")
+    module = request.args.get("module", "")
     annotations = store.annotations()
     profiled = {(k[0], k[1]) for k in store.profiles()}
     keys = list(catalog.tables) if show_all else table_like(pa.tables)
@@ -71,13 +73,17 @@ def tables():
             continue
         if status and (a.get("status") or "") != (status if status != "none" else ""):
             continue
+        cls = knowledge.classify(key[1])
+        if module and (cls.module.id if cls else "none") != module:
+            continue
         entry = pa.tables.get(key, {"screens": [], "actions": set(), "type": None, "indirect": False, "kinds": set()})
-        rows.append({"key": key, "table": table, "screens": entry["screens"], "actions": entry["actions"],
+        rows.append({"key": key, "table": table, "cls": cls, "screens": entry["screens"], "actions": entry["actions"],
                      "indirect": entry.get("indirect"), "kinds": entry.get("kinds", set()),
                      "used": len(used_cols.get(key, ())), "total": len(table.columns) if table else None,
                      "ann": a, "relations": rel_count.get(key, 0), "profiled": (key[0] or None, key[1]) in profiled})
     rows.sort(key=lambda r: (-len(r["screens"]), r["key"][1]))
-    return render_template("tables.html", rows=rows, show_all=show_all, q=q, status=status,
+    return render_template("tables.html", rows=rows, show_all=show_all, q=q, status=status, module=module,
+                           modules=knowledge.MODULES,
                            has_catalog=bool(catalog), capture_count=len(pa.captures))
 
 
@@ -307,7 +313,7 @@ def builder():
 def search():
     _, _, store = ctx()
     q = request.args.get("q", "").strip()
-    results = {"captures": [], "tables": [], "columns": [], "statements": [], "notes": [], "screens": []}
+    results = {"captures": [], "tables": [], "columns": [], "statements": [], "notes": [], "screens": [], "research": []}
     if q:
         up = q.upper()
         results["captures"] = [c for c in store.list_captures() if up in c["name"].upper()
@@ -324,6 +330,8 @@ def search():
                         results["columns"].append(c)
             results["tables"] = results["tables"][:200]
             results["columns"] = results["columns"][:300]
+        results["research"] = [t for t in knowledge.KNOWN_TABLES
+                               if up in t.name or up in t.meaning.upper() or up in t.expansion.upper()][:30]
         results["statements"] = store.search_sql(q)
         results["notes"] = [a for a in store.annotations().values()
                             if up in (a.get("note") or "").upper() or up in (a.get("target") or "").upper()]

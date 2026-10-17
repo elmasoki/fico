@@ -16,6 +16,7 @@ from .privacy import MASK_MODES
 from .sources import AuditFilter
 from .sqlinsight import USAGE_LABELS, analyse_sql, map_result_columns
 from .sqlutil import BindSlot, build_slots, find_placeholders, format_sql, parse_audit_binds, substitute_binds
+from . import knowledge
 from .store import parse_ts
 from .web import (CAPTURE_KINDS, STATUSES, capture_analysis, capture_or_404, capture_schema, ctx, ext,
                   get_catalog, is_sensitive, known_schemas, known_users, literal_for, log, masked,
@@ -29,7 +30,8 @@ def _globals(state):
     state.app.jinja_env.globals.update(
         STATUSES=STATUSES, USAGE_LABELS=USAGE_LABELS, label=label, format_sql=format_sql, ann=ann,
         CAPTURE_KINDS=CAPTURE_KINDS, SCREEN_STATUSES=SCREEN_STATUSES, MASK_MODES=MASK_MODES,
-        JOB_KINDS=JOB_KINDS)
+        JOB_KINDS=JOB_KINDS, RCONF=knowledge.CONFIDENCE, RCONF_HELP=knowledge.CONFIDENCE_HELP,
+        research_of=knowledge.classify, explain_name=knowledge.explain_text)
 
 
 @bp.app_context_processor
@@ -647,4 +649,4 @@ def capture_csv(capture_id):
                                "bindler", "sql_bind_yerlestirilmis"], "capture_%d.csv" % capture_id)
 
 
-from . import views_catalog, views_ops, views_reports  # noqa: E402,F401  (register their routes on bp)
+from . import views_catalog, views_ops, views_reports, views_research  # noqa: E402,F401  (register their routes on bp)

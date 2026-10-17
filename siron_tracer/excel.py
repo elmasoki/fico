@@ -68,9 +68,9 @@ def export_workbook(summary: List[list], screens: List[list], tables: List[list]
     _sheet(wb, "Ekranlar", ["Ekran", "Tür", "Modül", "Başlangıç", "Tablo sayısı", "Kolon sayısı", "SQL sayısı", "Not"],
            screens, {1: 40, 3: 24, 8: 40})
 
-    t_headers = ["Şema", "Tablo", "Tip", "Satır", "DB açıklaması", "Ekranlar", "Kullanılan kolon",
-                 "Durum", "Hedef", "Filtre", "Not"]
-    ws = _sheet(wb, "Tablolar", t_headers, tables, {2: 30, 5: 40, 6: 40, 9: 28, 10: 32, 11: 48},
+    t_headers = ["Şema", "Tablo", "Tip", "Satır", "DB açıklaması", "Siron modülü", "Araştırmaya göre", "Araştırma güveni",
+                 "Ekranlar", "Kullanılan kolon", "Durum", "Hedef", "Filtre", "Not"]
+    ws = _sheet(wb, "Tablolar", t_headers, tables, {2: 30, 5: 36, 6: 30, 7: 44, 8: 16, 9: 40, 12: 28, 13: 32, 14: 48},
                 editable=["Durum", "Hedef", "Filtre", "Not"])
     _validation(ws, "Durum", t_headers, list(STATUS_LABELS.values()))
 

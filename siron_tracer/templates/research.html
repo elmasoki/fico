@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, kpi, table_link, rconf, module_chip, research_tabs, status_badge, empty with context %}
+{% block page_title %}Siron AML araştırması{% endblock %}
+{% block eyebrow %}<div class="eyebrow">{{ icon('book') }}Araştırma · {{ doc_info.name }}{% if doc_info.updated %} · {{ doc_info.updated }}{% endif %}</div>{% endblock %}
+{% block subtitle %}<p class="sub">Siron tablolarının ne işe yaradığına dair açık kaynak araştırması, şemanızdaki tablolarla eşleştirilmiş hâli. Modül düzeyindeki okumalar güvenilir; tablo düzeyindeki anlamların çoğu <b>hipotezdir</b>. Yakalamalarla ve veriyle teyit edin.</p>{% endblock %}
+{% block actions %}
+  <a class="btn btn-secondary" href="{{ url_for('siron.research_queries') }}">{{ icon('code') }}Doğrulama sorguları</a>
+  <a class="btn btn-primary" href="{{ url_for('siron.research_doc') }}">{{ icon('file') }}Belgeyi oku</a>
+{% endblock %}
+{% block content %}
+{{ research_tabs(tab) }}
+{% set classified = rows|length - unclassified|length %}
+{% set known_found = stats.values()|sum(attribute='known_found') %}
+{% if not has_catalog %}<div class="callout warn">{{ icon('alert') }}<div><b>Veri sözlüğü yüklenmedi.</b> Modüller şimdilik yalnız yakalamalarda görülen tablolarla sayılıyor. Genel bakıştan <b>Veri sözlüğünü yükle</b> ile şemanın tamamını eşleştirin.</div></div>{% endif %}
+<div class="grid g4">
+  {{ kpi('layers', 'Modüle ayrılan tablo', classified|thousands, 'toplam %s tablodan'|format(rows|length|thousands), (100 * classified / rows|length) if rows else none) }}
+  {{ kpi('check', 'Araştırmadaki tablolar şemada', known_found, '%d bilinen tablodan'|format(kb.KNOWN_TABLES|length)) }}
+  {{ kpi('shield', 'Doğrulanmış anlamı olan', by_conf['verified'], 'olası %d · tahmin %d · çözülmemiş %d'|format(by_conf['likely'], by_conf['guess'], by_conf['unresolved'])) }}
+  {{ kpi('info', 'Araştırmada karşılığı yok', unclassified|length, 'bankaya özgü veya bilinmeyen önek') }}
+</div>
+
+<div class="grid g-main">
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('layers') }}Modüller</h2><span class="meta">önek ailelerine göre · kartı açınca tabloları görürsünüz</span></div>
+      <div class="card-body">
+        <div class="mod-grid">
+        {% for s in stats.values()|sort(attribute='tables', reverse=true) %}{% set m = s.module %}
+          <a class="mod-card {{ 'empty-mod' if not s.tables }}" href="{{ url_for('siron.research_module', module_id=m.id) }}">
+            <div class="mh"><span class="ic-wrap">{{ icon(m.icon) }}</span><div><h3>{{ m.name }}</h3><div class="prod">{{ m.product }}</div></div></div>
+            <p>{{ m.summary }}</p>
+            <div class="nums">
+              <div><b>{{ s.tables|thousands }}</b>tablo</div>
+              <div><b>{{ s.seen|thousands }}</b>ekranda</div>
+              <div><b>{{ s.decided|thousands }}</b>kararlı</div>
+              <div><b>{{ s.known_found }}<span class="muted" style="font-size:12px;font-weight:500">/{{ s.known_total }}</span></b>bilinen</div>
+            </div>
+          </a>
+        {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('info') }}Araştırmada karşılığı olmayan tablolar</h2><span class="meta">{{ unclassified|length }}</span></div>
+      {% if unclassified %}
+      <div class="table-wrap" style="max-height:420px">
+      <table>
+        <thead><tr><th>Tablo</th><th class="num">Satır</th><th class="num">Ekran</th><th>Durum</th><th>Ad ipucu</th></tr></thead>
+        <tbody>{% for r in unclassified[:200] %}
+          <tr><td>{{ table_link(r.key, 'cell-title') }}</td><td class="num small">{{ r.table.num_rows|thousands if r.table and r.table.num_rows is not none else '' }}</td>
+            <td class="num">{{ r.screens or '' }}</td><td>{{ status_badge(r.status) }}</td><td class="small muted">{{ explain_name(r.key[1]) }}</td></tr>
+        {% endfor %}</tbody>
+      </table>
+      </div>
+      <div class="card-body xs muted">Bunlar bankaya özgü tablolar (ör. yerel uyarlamalar), kullanılmayan modüller veya araştırmanın kapsamadığı önekler olabilir. Ekranda görülenler öncelikli incelenmeli.</div>
+      {% else %}{{ empty('check', 'Hepsi bir modüle ayrıldı') }}{% endif %}
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('zap') }}Temel bulgular</h2></div>
+      <div>{% for conf, title, text in findings %}
+        <div class="finding"><div class="fb">{{ rconf(conf) }}</div><div><b>{{ title }}</b><span class="d">{{ text }}</span></div></div>
+      {% endfor %}</div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('user') }}Resmi belge için kanallar</h2></div>
+      <ul class="list">{% for c in kb.CHANNELS %}
+        <li style="align-items:flex-start"><div class="grow"><span class="t">{% if c.url %}<a href="{{ c.url }}" target="_blank" rel="noopener noreferrer">{{ c.name }}</a>{% else %}{{ c.name }}{% endif %}</span>
+          <span class="s">{{ c.role }}</span><span class="s mono" style="display:block;margin-top:3px">{{ c.contact }}</span></div></li>
+      {% endfor %}</ul>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('list') }}Vendor'dan istenecekler</h2></div>
+      <ul class="list">{% for d in kb.DOC_REQUESTS %}<li class="small">{{ icon('check') }}<span class="grow">{{ d }}</span></li>{% endfor %}</ul>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('shield') }}Güven dereceleri</h2></div>
+      <ul class="list">{% for c in kb.CONFIDENCE_ORDER %}<li class="small"><span style="width:96px;flex:none">{{ rconf(c) }}</span><span class="grow muted">{{ kb.CONFIDENCE_HELP[c] }}</span></li>{% endfor %}</ul>
+    </div>
+  </div>
+</div>
+{% endblock %}

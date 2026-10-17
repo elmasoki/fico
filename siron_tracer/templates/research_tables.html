@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, table_link, rconf, module_chip, research_tabs, empty with context %}
+{% block page_title %}Tablo sözlüğü{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.research') }}">Araştırma</a>{{ icon('chev') }}<b>Tablo sözlüğü</b>{% endblock %}
+{% block subtitle %}<p class="sub">Araştırmada adı geçen {{ kb.KNOWN_TABLES|length }} tablo: Almanca/İngilizce açılımı, Türkçe anlamı ve güven derecesi. Şemanızda bulunanların satır sayısı ve kaç ekranda görüldüğü yanında.</p>{% endblock %}
+{% block content %}
+{{ research_tabs(tab) }}
+<div class="card">
+  <form class="filters" method="get">
+    <div class="field"><label class="lbl">Ara</label><input type="search" name="q" value="{{ q }}" placeholder="Tablo, anlam, açılım"></div>
+    <div class="field"><label class="lbl">Modül</label><select name="module" onchange="this.form.submit()"><option value="">Hepsi</option>
+      {% for m in kb.MODULES %}<option value="{{ m.id }}" {% if module == m.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl">Güven</label><select name="conf" onchange="this.form.submit()"><option value="">Hepsi</option>
+      {% for c in kb.CONFIDENCE_ORDER %}<option value="{{ c }}" {% if conf == c %}selected{% endif %}>{{ RCONF[c] }}</option>{% endfor %}</select></div>
+    <div class="field"><label class="lbl">Şemada</label><select name="where" onchange="this.form.submit()">
+      {% for k, v in [('', 'Hepsi'), ('found', 'Şemada var'), ('missing', 'Şemada yok')] %}<option value="{{ k }}" {% if where == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+    <button class="btn-secondary">{{ icon('filter') }}Uygula</button>
+    <span class="spacer"></span><span class="small muted">{{ items|length }} tablo · şemada bulunan {{ found }}</span>
+  </form>
+  {% if items %}
+  <div class="table-wrap tall"><table>
+    <thead><tr><th>Tablo</th><th>Modül</th><th>Anlam</th><th>Güven</th><th class="num">Satır</th><th class="num">Ekran</th></tr></thead>
+    <tbody>{% for i in items %}{% set t = i.t %}
+      <tr><td class="nowrap">{% if i.hit %}{{ table_link(i.hit.key, 'cell-title') }}{% else %}<span class="mono muted">{{ t.name }}</span><span class="cell-sub">şemada yok</span>{% endif %}</td>
+        <td style="max-width:240px">{{ module_chip(kb.MODULE_BY_ID[t.module]) }}</td>
+        <td class="small" style="white-space:normal;min-width:300px"><b>{{ t.meaning }}</b>{% if t.expansion %} <span class="muted">({{ t.expansion }})</span>{% endif %}
+          {% if t.note %}<span class="colhint" style="max-width:none">{{ t.note }}</span>{% endif %}</td>
+        <td>{{ rconf(t.confidence) }}</td>
+        <td class="num small">{{ i.hit.table.num_rows|thousands if i.hit and i.hit.table and i.hit.table.num_rows is not none else '' }}</td>
+        <td class="num">{{ i.hit.screens if i.hit and i.hit.screens else '' }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}{{ empty('search', 'Eşleşen tablo yok') }}{% endif %}
+</div>
+{% endblock %}

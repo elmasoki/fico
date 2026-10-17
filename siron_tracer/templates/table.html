@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, table_label, table_link, results_table, usage_badges, status_badge, relation_rows, pii, empty with context %}
+{% from "_macros.html" import icon, table_label, table_link, results_table, usage_badges, status_badge, relation_rows, pii, empty, module_chip, rconf with context %}
 {% block page_title %}{{ key[1] }}{% endblock %}
 {% block crumbs %}<a href="{{ url_for('siron.tables') }}">Tablolar</a>{{ icon('chev') }}<b>{{ table_label(key) }}</b>{% endblock %}
 {% block eyebrow %}{% set a = ann(annotations, key) %}<div class="eyebrow">{{ icon('table') }}{{ key[0] or '' }} · {{ info.obj_type if info else (obj_type or 'nesne') }} {{ status_badge(a.status) }}</div>{% endblock %}
@@ -19,6 +19,14 @@
   <div class="mini-stat"><b>{{ relations|length }}</b><span>ilişki</span></div>
   <div class="mini-stat"><b>{{ sensitive.values()|select|list|length }}</b><span>hassas kolon</span></div>
 </div>
+{% set rs = research_of(key[1]) %}
+{% if rs %}<div class="callout mb16">{{ icon('book') }}<div style="flex:1">
+  <div class="rnote mb8"><b>Araştırma</b> {{ module_chip(rs.module) }} {{ rconf(rs.confidence) }} <span class="xs muted">{{ rs.basis }}{% if rs.family %} · {{ rs.family.prefix }}{% endif %}</span></div>
+  {% if rs.known %}<div><b>{{ rs.known.meaning }}</b>{% if rs.known.expansion %} <span class="muted">({{ rs.known.expansion }})</span>{% endif %}</div>
+    {% if rs.known.note %}<div class="small muted mt8">{{ rs.known.note }}</div>{% endif %}
+  {% else %}<div class="small">Tablonun kendisi araştırmada geçmiyor; önek ailesine göre: <span class="muted">{{ rs.family.meaning }}</span></div>{% endif %}
+  {% if rs.confidence != 'verified' %}<div class="xs muted mt8">Hipotezdir: ekran yakalamaları, örnek satırlar ve profil ile teyit edin; sonucu aşağıdaki "İş anlamı / not" alanına yazın.</div>{% endif %}
+</div><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.research_module', module_id=rs.module.id) }}">Modül{{ icon('chev') }}</a></div>{% endif %}
 {% if not info %}<div class="callout warn">{{ icon('alert') }}<div>Bu nesne veri sözlüğünde yok (sözlük yüklenmemiş veya başka şemada).</div></div>{% endif %}
 
 {% if sample_error %}<div class="callout err">{{ icon('alert') }}<div>{{ sample_error }}</div></div>{% endif %}
@@ -79,7 +87,7 @@
       <td class="nowrap"><b class="mono">{{ c.name }}</b>
         {% if c.name in pk %}<span class="kbadge pk">PK</span>{% endif %}{% if c.name in uk %}<span class="kbadge">UK</span>{% endif %}{% if c.name in fk %}<span class="kbadge fk">FK</span>{% endif %}
         {{ pii(sensitive.get(c.name)) }}
-        {% if c.comment %}<span class="cell-sub">{{ c.comment }}</span>{% endif %}</td>
+        {% if c.comment %}<span class="cell-sub">{{ c.comment }}</span>{% endif %}{% set h = explain_name(c.name) %}{% if h %}<span class="colhint" title="Almanca ad ipucu (araştırma)">{{ h }}</span>{% endif %}</td>
       <td class="small nowrap">{{ c.type_label }}{% if not c.nullable %}<span class="cell-sub">NOT NULL</span>{% endif %}</td>
       <td>{% if u %}{{ usage_badges(u.kinds) }}<span class="cell-sub">{{ u.screens|length }} ekran</span>{% endif %}</td>
       <td class="num small nowrap">{% if p %}{{ p.fill_pct|pct(1) if p.fill_pct is not none else '—' }}<span class="cell-sub">{{ p.distinct|thousands }} farklı</span>{% for f in flags.get(c.name, []) %}<span class="badge {{ 'info' if f == 'benzersiz' else 'warn' }}">{{ f }}</span>{% endfor %}{% endif %}</td>

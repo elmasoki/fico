@@ -1,4 +1,5 @@
 {% from "_macros.html" import er_svg, usage_badges, conf_badge, source_badges, check_text, table_label with context %}
+{% macro rc(c) %}<span class="badge rc-{{ c }}">{{ RCONF.get(c, c) }}</span>{% endmacro %}
 {% macro st(status) %}{% if status %}<span class="badge st-{{ status }}"><span class="dot"></span>{{ STATUSES.get(status) }}</span>{% endif %}{% endmacro %}
 <!doctype html>
 <html lang="tr">
@@ -31,7 +32,7 @@
 <div class="box"><b>İçindekiler</b>
 <ol class="toc">
   <li><a href="#screens">Ekranlar</a></li><li><a href="#tables">Tablolar ve kolonlar</a></li><li><a href="#mapping">Kolon eşleme matrisi</a></li>
-  <li><a href="#relations">İlişkiler ve ER diyagramı</a></li>{% if include_sql %}<li><a href="#sql">SQL'ler</a></li>{% endif %}{% if snaps %}<li><a href="#results">Sorgu sonuçları</a></li>{% endif %}
+  {% if research_modules %}<li><a href="#modules">Siron modülleri (araştırma)</a></li>{% endif %}<li><a href="#relations">İlişkiler ve ER diyagramı</a></li>{% if include_sql %}<li><a href="#sql">SQL'ler</a></li>{% endif %}{% if snaps %}<li><a href="#results">Sorgu sonuçları</a></li>{% endif %}
 </ol></div>
 
 {% set n.i = n.i + 1 %}<h2 id="screens"><span class="num">{{ n.i }}</span>Ekranlar</h2>
@@ -46,6 +47,7 @@
 <div class="box" id="t-{{ s.key[1] }}">
   <h3>{{ table_label(s.key) }} {{ st(a.status) }}<span class="small muted" style="font-weight:400">{% if s.info %}{{ s.info.obj_type }}{% if s.info.num_rows is not none %} · {{ s.info.num_rows|thousands }} satır{% endif %} · {{ s.info.columns|length }} kolon{% endif %}{% if s.indirect %} · dolaylı (paket/view){% endif %}</span></h3>
   {% if s.info and s.info.comment %}<div class="small"><b>DB açıklaması:</b> {{ s.info.comment }}</div>{% endif %}
+  {% if s.research %}{% set r = s.research %}<div class="small"><b>Araştırma:</b> {{ r.module.name }} · {% if r.known %}{{ r.known.meaning }}{% if r.known.expansion %} ({{ r.known.expansion }}){% endif %}{% else %}önek ailesi {{ r.family.prefix }}{% endif %} {{ rc(r.confidence) }}</div>{% endif %}
   {% if a.note or a.target or a.extract_filter %}<div class="note">{% if a.target %}<b>Hedef:</b> {{ a.target }}. {% endif %}{% if a.extract_filter %}<b>Filtre:</b> <span class="mono">{{ a.extract_filter }}</span>. {% endif %}{{ a.note or '' }}</div>{% endif %}
   <div class="small"><b>Ekranlar:</b> {% for c in s.screens %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}</div>
   {% if s.cols or s.used_unknown %}
@@ -70,6 +72,15 @@
   <td class="small">{{ r.info.type_label if r.info else '' }}</td><td>{{ usage_badges(r.kinds) }}</td><td class="small">{% for c in r.screens %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}</td>
   <td>{{ st(r.ann.status or r.table_ann.status) }}</td><td class="small"><b>{{ r.ann.target or '' }}</b></td><td class="small">{{ r.ann.note or '' }}</td></tr>{% endfor %}
 </tbody></table>
+
+{% if research_modules %}
+{% set n.i = n.i + 1 %}<h2 id="modules"><span class="num">{{ n.i }}</span>Siron modülleri (araştırma)</h2>
+<p class="small muted">Tabloların önek ailesine göre ait olduğu Siron modülleri. Modül düzeyindeki okumalar güvenilir; tablo düzeyindeki anlamlar "Doğrulanmış" değilse hipotezdir.</p>
+<table><thead><tr><th>Modül</th><th>Ürün</th><th class="num">Tablo</th><th>Tablolar</th></tr></thead><tbody>
+{% for m, secs in research_modules %}<tr><td><b>{{ m.name if m else 'Araştırmada karşılığı yok' }}</b></td><td class="small">{{ m.product if m else 'bankaya özgü / bilinmiyor' }}</td><td class="num">{{ secs|length }}</td>
+  <td class="small">{% for sec in secs %}<span class="badge">{{ sec.key[1] }}</span>{% endfor %}</td></tr>{% endfor %}
+</tbody></table>
+{% endif %}
 
 {% set n.i = n.i + 1 %}<h2 id="relations"><span class="num">{{ n.i }}</span>İlişkiler ve ER diyagramı</h2>
 <p class="small muted">FK: veritabanı constraint'i · SQL: Siron'un çalıştırdığı sorgulardaki join · Tahmin: kolon adı/tipi eşleşmesi. Diyagramda güveni 50 ve üstü ilişkiler gösterilir.</p>

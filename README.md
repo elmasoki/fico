@@ -24,6 +24,7 @@ eşleme kararlarını yönetir ve taşınacak veriyi paketler.
 | Kolonda ne var? | **Veri profili** — doluluk, farklı değer, min/max, uzunluk, en sık değerler; "hep boş", "tek değer", "benzersiz" uyarıları |
 | Neyi taşıyacağız? | **Eşleme kararları** — tablo/kolon başına Taşınacak / İncelenecek / Gereksiz, hedef alan, iş anlamı, çıkarma filtresi; toplu karar |
 | Analistlerle nasıl çalışırız? | **Excel gidiş-dönüş** — biçimli çalışma kitabı (açılır listeler, sarı düzenlenebilir hücreler), geri yükleme, tek tıkla geri alma |
+| Bu tablo ne işe yarıyor? | **Araştırma** — Siron tabloları üzerine yapılan açık kaynak araştırması uygulamanın içinde: tablolar önek ailelerine göre 15 Siron modülüne (AML, KYC, Embargo, TCR/FATCA, ACM, Tonbeller platformu, MASAK köprüsü…) ayrılır; her modülde şemanızda kaç tablo var, kaçı ekranlarda görüldü. 136 tabloluk sözlük (anlam, Almanca açılım, güven derecesi), Almanca kolon adı çözümleyici (KUNDNR, HISTBIS…), seçilen şemaya uyarlanmış doğrulama sorguları ve belgenin tam metni. Tablo sayfasında ve raporda araştırma notu |
 | Bir şeyi atladık mı? | **Ekran envanteri ve kapsam** — yakalanmayan ekranlar, hiçbir ekranda görünmeyen dolu tablolar, karar bekleyen kolonlar, doğrulanmamış ilişkiler |
 | Veriyi nasıl çekeriz? | **Sorgu oluşturucu** (en güvenilir JOIN yolu) ve **Taşıma paketi** — ilişkilere göre yükleme sırası, PK ve ilişki kolonları otomatik dahil; SQL betikleri (.zip, SQL*Plus spool dahil) veya doğrudan CSV'ye **veri çıkarma** (satır sayısı + SHA-256 manifest) |
 | Ekibe ne sunarız? | **Tek dosyalık HTML rapor** (yönetici özeti, veri sözlüğü, eşleme matrisi, ER, SQL'ler, sonuçlar), CSV/Excel çıktıları |
@@ -76,12 +77,14 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
    listeden tek tek ya da toplu silebilirsiniz (eşleme kararları silinmez).
 4. Her ekran için yakalama alın (envanterden seçerek). Ekrana gelene kadar başka yerlerde gezindiyseniz kayıt
    sırasında **Sıfırla**'ya basın: o ana kadar yakalananlar atılır, kayıt devam eder. Gece işleri için **Geçmiş aralık / batch**.
-5. Ekranın **Kolonlar** sekmesi ve **Ekrandaki değeri bul** ile alanları kolonlara bağlayın.
-6. **Tablolar**'da toplu karar verin, önemli tabloları **profilleyin**, tablo sayfasında kolon kararlarını,
+5. Yakalanan tabloların ne olduğunu **Araştırma** bölümünden ve tablo sayfasındaki araştırma notundan okuyun; hipotezleri
+   **Doğrulama sorguları** ile kendi veritabanınızda test edin.
+6. Ekranın **Kolonlar** sekmesi ve **Ekrandaki değeri bul** ile alanları kolonlara bağlayın.
+7. **Tablolar**'da toplu karar verin, önemli tabloları **profilleyin**, tablo sayfasında kolon kararlarını,
    hedef alanları ve hassasiyeti girin — veya **Excel eşleme** ile analistlere dağıtın.
-7. **İlişkiler** → **Tümünü veriyle doğrula**; **ER diyagramı** ile modeli gözden geçirin.
-8. **Kapsam** sayfasında açık kalanları kapatın (yakalanmayan ekranlar, görünmeyen tablolar).
-9. **Taşıma paketi**: filtreleri girin, paketi indirin veya veriyi çıkarın. **Raporlar**'dan dokümanı üretin.
+8. **İlişkiler** → **Tümünü veriyle doğrula**; **ER diyagramı** ile modeli gözden geçirin.
+9. **Kapsam** sayfasında açık kalanları kapatın (yakalanmayan ekranlar, görünmeyen tablolar).
+10. **Taşıma paketi**: filtreleri girin, paketi indirin veya veriyi çıkarın. **Raporlar**'dan dokümanı üretin.
 
 ## Ekranlar
 
@@ -99,6 +102,24 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
 | ![Etkinlik günlüğü](docs/screenshots/16_etkinlik.png) | ![Excel eşleme](docs/screenshots/17_excel.png) |
 | ![Sorgu oluşturucu](docs/screenshots/18_sorgu_olusturucu.png) | ![HTML rapor](docs/screenshots/19_rapor.png) |
 | ![Koyu tema](docs/screenshots/20_genel_bakis_koyu.png) | ![ER koyu tema](docs/screenshots/21_er_koyu.png) |
+| ![Araştırma: modüller](docs/screenshots/22_arastirma.png) | ![Araştırma: modül detayı](docs/screenshots/23_arastirma_modul.png) |
+| ![Tablo sözlüğü](docs/screenshots/24_tablo_sozlugu.png) | ![Doğrulama sorguları](docs/screenshots/25_dogrulama_sorgulari.png) |
+| ![Tablo sayfasında araştırma notu](docs/screenshots/26_tablo_arastirma_notu.png) | |
+
+## Araştırma bölümü
+
+Siron'un tablo dokümantasyonu vendor tarafından verilmediği için, tabloların anlamına dair yapılmış açık kaynak araştırma
+(`siron_tracer/knowledge/siron_aml_arastirma.md`) uygulamaya gömülüdür ve iş birimi doğrudan uygulamadan okuyabilir:
+
+- **Modüller:** şemanızdaki her tablo, adının önekine göre bir Siron modülüne ayrılır (GWG* → AML çekirdeği, TB* → Tonbeller
+  platformu, TBQ* → KYC anket, SL_* → yaptırım listeleri, FAR*/TAX* → FATCA/CRS, PARAM_*/MASAK_* → yerel MASAK köprüsü…).
+  Kart başına şemadaki tablo, ekranlarda görülen ve karar verilen sayıları; araştırmada karşılığı olmayan (bankaya özgü) tablolar ayrıca listelenir.
+- **Güven dereceleri:** *Doğrulanmış* (gerçek Siron SQL'inde görüldü: KYCCUST, PRESULT, TBRLEINT…), *Olası*, *Tahmin*, *Çözülmemiş*.
+  Tablo düzeyindeki anlamların çoğu hipotezdir; yakalamalarla teyit edip tablo sayfasındaki "İş anlamı / not" alanına yazın.
+- **Almanca terimler:** KUNDNR, HISTBIS, BUCHUNGSDATUM gibi adlar parçalarına ayrılıp Türkçeye çevrilir; tablo sayfasında her kolonun altında görünür.
+- **Doğrulama sorguları:** araştırmadaki 27 sorgu seçtiğiniz şemaya uyarlanır; SELECT olanlar uygulamada salt-okunur çalışır, PL/SQL olanlar kopyalanır.
+- **Belge:** içindekiler tablosuyla tam metin; yeni bir araştırma sürümü geldiğinde **Yeni sürüm yükle** ile `.md` dosyası yüklenir, istenirse orijinale dönülür.
+- Tablolar listesinde **Modül** sütunu ve filtresi, genel aramada araştırma sonuçları, HTML raporda (isteğe bağlı) modül özeti ve tablo başına araştırma notu.
 
 ## Audit kaynakları
 
@@ -148,6 +169,7 @@ entegrasyon testlerini çalıştırır (`.github/workflows/ci.yml`).
 | `relations.py` | İlişki keşfi, JOIN yolu, SELECT üretimi, Mermaid/DOT |
 | `profiling.py`, `finder.py`, `privacy.py` | Veri profili, değer arama, hassas veri ve maskeleme |
 | `coverage.py`, `migration.py`, `excel.py` | Kapsam, taşıma paketi ve veri çıkarma, Excel gidiş-dönüş |
+| `knowledge/`, `mdrender.py` | Siron araştırması: modüller, önek aileleri, tablo ve terim sözlüğü, doğrulama sorguları, belge (Markdown) |
 | `analysis.py`, `jobs.py` | Ekran/proje analizi, arka plan işleri |
 | `sources.py`, `oracle.py`, `store.py` | Audit kaynakları, Oracle erişimi, SQLite deposu |
 | `views*.py`, `templates/`, `static/` | Arayüz ve raporlar |

@@ -6,6 +6,7 @@ from datetime import datetime
 
 from flask import Response, flash, redirect, render_template, request, url_for
 
+from . import knowledge
 from .catalog import label
 from .coverage import SCREEN_STATUSES, compute as compute_coverage, screen_status
 from .excel import STATUS_LABELS, export_workbook, read_workbook
@@ -129,7 +130,10 @@ def mapping_xlsx():
         t = catalog.tables.get(key) if catalog else None
         a = ann(annotations, key)
         entry = pa.tables[key]
+        rs = knowledge.classify(key[1])
         tables.append([key[0], key[1], t.obj_type if t else "", t.num_rows if t else None, t.comment if t else "",
+                       rs.module.name if rs else "", rs.meaning if rs else "",
+                       knowledge.CONFIDENCE[rs.confidence] if rs else "",
                        ", ".join(c["name"] for c, _ in entry["screens"]), len(used.get(key, ())),
                        STATUS_LABELS.get(a.get("status"), ""), a.get("target"), a.get("extract_filter"), a.get("note")])
     columns = []
@@ -246,6 +250,7 @@ def report():
     include_sql = args.get("sql", "1") == "1"
     include_snapshots = args.get("snapshots", "1") == "1"
     include_profiles = args.get("profiles", "1") == "1"
+    include_research = args.get("research", "1") == "1"
     all_columns = args.get("cols") == "all"
     catalog = get_catalog()
     annotations = store.annotations()
@@ -318,6 +323,17 @@ def report():
             s["rows"], idx, _ = masked(s["columns"], s["rows"], s["sources"], mask_mode)
             s["masked_cols"] = [s["columns"][i] for i in sorted(idx)]
 
+    research_modules = []
+    if include_research:
+        by_module = {}
+        for sec in sections:
+            sec["research"] = knowledge.classify(sec["key"][1])
+            mid = sec["research"].module.id if sec["research"] else None
+            by_module.setdefault(mid, []).append(sec)
+        research_modules = [(knowledge.MODULE_BY_ID[m.id], by_module[m.id]) for m in knowledge.MODULES if m.id in by_module]
+        if None in by_module:
+            research_modules.append((None, by_module[None]))
+
     cov = None if capture_id else compute_coverage(pa, catalog, annotations, store.list_screens(), captures_all,
                                                    project_relations())
     html = render_template(
@@ -325,7 +341,8 @@ def report():
         screens=screens, stmt_count=len({st.sql_id for _, ca in selected for st in ca.statements}),
         sections=sections, relations=relations, er=er, col_usage=col_usage, cov=cov,
         annotations=annotations, snaps=snaps, mask_mode=mask_mode, include_sql=include_sql,
-        include_profiles=include_profiles, show=show,
+        include_profiles=include_profiles, show=show, include_research=include_research,
+        research_modules=research_modules,
         mapping=mapping_rows(pa, annotations, include_unused_annotated=not capture_id) if not capture_id else
         [r for r in mapping_rows(pa, annotations, False) if r["col"] in col_usage],
         all_columns=all_columns, single=bool(capture_id))

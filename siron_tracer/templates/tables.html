@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, table_link, status_badge, empty with context %}
+{% from "_macros.html" import icon, table_link, status_badge, empty, module_chip, rconf with context %}
 {% block page_title %}Tablolar{% endblock %}
 {% block subtitle %}<p class="sub">Ekranlarda kullanılan (ya da şemadaki tüm) tablolar. Satırları seçip toplu karar verebilir veya profil çıkarabilirsiniz.</p>{% endblock %}
 {% block actions %}<a class="btn btn-secondary" href="{{ url_for('siron.mapping_xlsx') }}">{{ icon('sheet') }}Excel'e aktar</a>{% endblock %}
@@ -10,6 +10,9 @@
     <div class="field"><label class="lbl">Durum</label><select name="status"><option value="">Hepsi</option>
       {% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
       <option value="none" {% if status == 'none' %}selected{% endif %}>Karar yok</option></select></div>
+    <div class="field"><label class="lbl">Modül (araştırma)</label><select name="module"><option value="">Hepsi</option>
+      {% for m in modules %}<option value="{{ m.id }}" {% if module == m.id %}selected{% endif %}>{{ m.name }}</option>{% endfor %}
+      <option value="none" {% if module == 'none' %}selected{% endif %}>Araştırmada karşılığı yok</option></select></div>
     <div class="field"><label class="lbl">Kapsam</label><select name="all"><option value="0">Ekranlarda kullanılanlar</option>
       <option value="1" {% if show_all %}selected{% endif %} {% if not has_catalog %}disabled{% endif %}>Şemadaki tüm tablolar</option></select></div>
     <button class="btn-secondary">{{ icon('filter') }}Uygula</button>
@@ -27,13 +30,14 @@
   </div>
   <div class="table-wrap tall">
   <table>
-    <thead><tr><th class="tight"><input type="checkbox" id="all" title="Hepsini seç"></th><th>Tablo</th><th class="num">Satır</th><th>Ekranlar</th><th>İşlemler</th><th class="num">Kolon</th><th class="num">İlişki</th><th>Durum</th><th>Hedef / not</th></tr></thead>
+    <thead><tr><th class="tight"><input type="checkbox" id="all" title="Hepsini seç"></th><th>Tablo</th><th>Modül</th><th class="num">Satır</th><th>Ekranlar</th><th>İşlemler</th><th class="num">Kolon</th><th class="num">İlişki</th><th>Durum</th><th>Hedef / not</th></tr></thead>
     <tbody>
     {% for r in rows %}
     <tr>
       <td><input type="checkbox" name="k" value="{{ r.key[0] ~ '.' if r.key[0] }}{{ r.key[1] }}"></td>
       <td>{{ table_link(r.key, 'cell-title') }}
         <span class="cell-sub">{{ r.table.obj_type if r.table else 'veri sözlüğünde yok' }}{% if r.indirect %} · dolaylı{% endif %}{% if 'batch' in r.kinds %} · batch{% endif %}{% if r.profiled %} · profilli{% endif %}{% if r.table and r.table.comment %} · {{ r.table.comment[:80] }}{% endif %}</span></td>
+      <td style="max-width:220px">{% if r.cls %}{{ module_chip(r.cls.module) }}<span class="cell-sub" title="{{ r.cls.meaning }}">{% if r.cls.known %}{{ r.cls.known.meaning[:48] }}{% else %}önek eşleşmesi{% endif %}</span>{% else %}<span class="xs muted">—</span>{% endif %}</td>
       <td class="num small">{{ r.table.num_rows|thousands if r.table else '' }}</td>
       <td class="small">{% for c, t in r.screens[:3] %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name[:28] }}</a>{% endfor %}{% if r.screens|length > 3 %}<span class="xs muted">+{{ r.screens|length - 3 }}</span>{% endif %}</td>
       <td>{% for a in r.actions|sort %}<span class="badge">{{ a }}</span>{% endfor %}</td>
@@ -41,7 +45,7 @@
       <td class="num">{{ r.relations or '' }}</td>
       <td>{{ status_badge(r.ann.status) }}</td>
       <td class="small">{% if r.ann.target %}<b>{{ r.ann.target }}</b> {% endif %}<span class="muted">{{ r.ann.note or '' }}</span></td></tr>
-    {% else %}<tr><td colspan="9">{{ empty('table', 'Tablo yok', '<span class="small">Ekran yakalayın veya kapsamı "Şemadaki tüm tablolar" yapın.</span>') }}</td></tr>{% endfor %}
+    {% else %}<tr><td colspan="10">{{ empty('table', 'Tablo yok', '<span class="small">Ekran yakalayın veya kapsamı "Şemadaki tüm tablolar" yapın.</span>') }}</td></tr>{% endfor %}
     </tbody>
   </table>
   </div>

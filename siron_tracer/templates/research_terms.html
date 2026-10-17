@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, rconf, module_chip, research_tabs with context %}
+{% block page_title %}Almanca terimler{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.research') }}">Araştırma</a>{{ icon('chev') }}<b>Almanca terimler</b>{% endblock %}
+{% block subtitle %}<p class="sub">Siron'un tablo ve kolon adları büyük ölçüde Almanca kısaltmalardır (KUNDNR, HISTBIS, CVORFALL…). Bir adı yazın, parçalarını Türkçeye çevirelim. Aynı ipuçları tablo sayfalarında kolonların altında da görünür.</p>{% endblock %}
+{% block content %}
+{{ research_tabs(tab) }}
+<div class="grid g-main">
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('search') }}Ad çözümle</h2></div>
+      <div class="card-body">
+        <form method="get" class="toolbar">
+          <div class="field" style="flex:1"><input type="text" name="name" value="{{ name }}" placeholder="ör. GWGKUNDE, BUCHUNGSDATUM, KYC_SP_04" class="mono" autofocus></div>
+          <button class="btn-primary">{{ icon('search') }}Çözümle</button>
+        </form>
+        {% if name %}
+        <div class="mt8">
+          {% if cls %}<p class="mb8">{{ module_chip(cls.module) }} {{ rconf(cls.confidence) }} <span class="small">{{ cls.meaning }}</span></p>{% endif %}
+          {% if explained %}
+          <table><thead><tr><th>Parça</th><th>Türkçe</th><th>Almanca</th></tr></thead>
+            <tbody>{% for frag, meaning, de in explained %}<tr><td class="mono"><b>{{ frag }}</b></td><td>{{ meaning }}</td><td class="muted">{{ de }}</td></tr>{% endfor %}</tbody></table>
+          {% else %}<p class="muted small mb0">Bilinen bir Almanca parça bulunamadı. Ad İngilizce veya bankaya özgü olabilir.</p>{% endif %}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('list') }}Parça sözlüğü</h2><span class="meta">{{ kb.TERMS|length }} parça · tablo/kolon adlarında en uzun eşleşme önce</span></div>
+      <div class="table-wrap tall"><table>
+        <thead><tr><th>Parça</th><th>Türkçe</th><th>Almanca</th></tr></thead>
+        <tbody>{% for frag, meaning, de in kb.TERMS|sort(attribute='0') %}<tr><td class="mono"><b>{{ frag }}</b></td><td>{{ meaning }}</td><td class="muted">{{ de }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>{{ icon('check') }}Gerçek Siron SQL'inde görülen kolonlar</h2></div>
+      <ul class="list">{% for col, meaning in kb.KNOWN_COLUMNS.items() %}<li style="align-items:flex-start"><b class="mono" style="width:120px;flex:none">{{ col }}</b><span class="grow small">{{ meaning }}</span></li>{% endfor %}
+        <li style="align-items:flex-start"><b class="mono" style="width:120px;flex:none">KYC_SP_01…32</b><span class="grow small">Kuruma göre eşlenen serbest alanlar. Örnek kurulumda SP_01 cinsiyet, SP_02 dil, SP_03 sektör, SP_04 unvan, SP_06 kısa ad, SP_07 adlar, SP_32 şube kodu. Kod değerleri TBRLEINT.KOMMENTAR ile açıklanır.</span></li></ul>
+      <div class="card-body xs muted">Kaynak: T24 ↔ Siron KYC entegrasyonundaki gerçek SQL. Bu kolonlar {{ rconf('verified') }} sayılır.</div>
+    </div>
+    <div class="callout">{{ icon('info') }}<div><b>Tarihçe kalıbı:</b> <span class="mono">HISTVON</span>/<span class="mono">HISTBIS</span> geçerlilik aralığıdır; <span class="mono">HISTBIS = '9999'</span> güncel kaydı işaretler. Taşıma paketinde bu tablolara çıkarma filtresi olarak eklemeyi düşünün.</div></div>
+  </div>
+</div>
+{% endblock %}

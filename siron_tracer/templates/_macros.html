@@ -161,3 +161,20 @@
   <span><i class="sw b-migrate"></i>Taşınacak</span><span><i class="sw b-review"></i>İncelenecek</span><span><i class="sw b-ignore"></i>Gereksiz</span>
 </div>
 {% endmacro %}
+
+{% macro rconf(c) %}<span class="badge rc-{{ c }}" title="{{ RCONF_HELP.get(c, '') }}">{{ RCONF.get(c, c) }}</span>{% endmacro %}
+
+{% macro module_chip(m, link=true) %}{% if link %}<a class="badge mod" href="{{ url_for('siron.research_module', module_id=m.id) }}" title="{{ m.name }} · {{ m.product }}">{{ icon(m.icon) }}{{ m.short or m.name }}</a>{% else %}<span class="badge mod" title="{{ m.name }}">{{ icon(m.icon) }}{{ m.short or m.name }}</span>{% endif %}{% endmacro %}
+
+{% macro research_note(cls, compact=false) %}{% if cls %}
+<span class="rnote">{{ module_chip(cls.module) }} {{ rconf(cls.confidence) }}{% if not compact %} <span class="xs muted">{{ cls.basis }}</span>{% endif %}</span>
+{% endif %}{% endmacro %}
+
+{% macro research_tabs(tab) %}
+<nav class="tabs">
+  {% for key, ep, text, ic in [('overview', 'research', 'Modüller', 'layers'), ('tables', 'research_tables', 'Tablo sözlüğü', 'table'),
+                               ('terms', 'research_terms', 'Almanca terimler', 'edit'), ('queries', 'research_queries', 'Doğrulama sorguları', 'code'),
+                               ('document', 'research_doc', 'Araştırma belgesi', 'file')] %}
+  <a href="{{ url_for('siron.' ~ ep) }}" class="{{ 'on' if tab == key }}">{{ icon(ic) }}{{ text }}</a>{% endfor %}
+</nav>
+{% endmacro %}

@@ -27,6 +27,7 @@
                '<span class="live"></span>' if recording_count else '') }}
         {{ nav('inventory', 'Ekran envanteri', 'list') }}
         {{ nav('coverage', 'Kapsam', 'pie') }}
+        {{ nav('research', 'Araştırma', 'book', ('research_module', 'research_tables', 'research_terms', 'research_queries', 'research_doc')) }}
       </div>
       <div class="nav-group"><div class="nav-label">Veri modeli</div>
         {{ nav('tables', 'Tablolar', 'table', ('table',)) }}

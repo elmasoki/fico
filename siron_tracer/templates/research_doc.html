@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, research_tabs with context %}
+{% block page_title %}Araştırma belgesi{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.research') }}">Araştırma</a>{{ icon('chev') }}<b>Araştırma belgesi</b>{% endblock %}
+{% block subtitle %}<p class="sub">{{ info.name }} · {% if info.custom %}yüklenen sürüm ({{ info.updated }}){% else %}uygulamayla gelen sürüm{% endif %}. Yeni bir araştırma sürümü geldiğinde Markdown dosyasını buradan yükleyin.</p>{% endblock %}
+{% block actions %}
+  <form method="post" enctype="multipart/form-data" class="inline" id="doc-upload">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="file" name="file" id="doc-file" accept=".md,.markdown,.txt,text/markdown,text/plain" hidden
+           onchange="if (this.files.length) { this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit(); }">
+    <label for="doc-file" class="btn btn-secondary" title="Markdown (.md) dosyası seçin; seçince yüklenir">{{ icon('upload') }}Yeni sürüm yükle</label>
+  </form>
+  {% if info.custom %}<form method="post" class="inline" onsubmit="return confirm('Yüklenen sürüm silinip uygulamayla gelen belgeye dönülsün mü?')"><input type="hidden" name="action" value="reset"><button class="btn-ghost">{{ icon('refresh') }}Orijinale dön</button></form>{% endif %}
+  <button type="button" class="btn-secondary" onclick="window.print()">{{ icon('download') }}Yazdır / PDF</button>
+{% endblock %}
+{% block content %}
+{{ research_tabs(tab) }}
+<div class="doc-layout">
+  <aside class="card toc" style="margin:0">
+    <div class="card-head"><h2>{{ icon('list') }}İçindekiler</h2></div>
+    <div style="padding:6px 8px 10px">{% for level, anchor, title in toc %}<a class="l{{ level }}" href="#{{ anchor }}">{{ title }}</a>{% endfor %}</div>
+  </aside>
+  <article class="card" style="margin:0"><div class="card-body prose">{{ body|safe }}</div></article>
+</div>
+{% endblock %}

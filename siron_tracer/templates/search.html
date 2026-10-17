@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, table_label, table_link, status_badge, empty with context %}
+{% from "_macros.html" import icon, table_label, table_link, status_badge, empty, rconf with context %}
 {% block page_title %}Arama{% endblock %}
 {% block subtitle %}{% if q %}<p class="sub">"<b>{{ q }}</b>" için {{ total }} sonuç</p>{% endif %}{% endblock %}
 {% block content %}
@@ -12,6 +12,9 @@
   <div class="card"><div class="card-head"><h2>{{ icon('table') }}Tablolar</h2><span class="meta">{{ results.tables|length }}</span></div>
     <ul class="list">{% for t in results.tables[:30] %}<li><span class="grow">{{ table_link(t.key, 't') }}<span class="s">{{ (t.comment or '')[:80] }}</span></span></li>{% else %}<li class="muted small">—</li>{% endfor %}</ul></div>
 </div>
+{% if results.research %}<div class="card"><div class="card-head"><h2>{{ icon('book') }}Araştırma</h2><span class="meta">{{ results.research|length }}</span>
+  <div class="tools"><a class="btn btn-ghost btn-sm" href="{{ url_for('siron.research_tables', q=q) }}">Tablo sözlüğünde aç{{ icon('chev') }}</a></div></div>
+  <ul class="list">{% for t in results.research %}<li><b class="mono" style="width:190px;flex:none">{{ t.name }}</b><span class="grow small">{{ t.meaning }}{% if t.expansion %} <span class="muted">({{ t.expansion }})</span>{% endif %}</span>{{ rconf(t.confidence) }}</li>{% endfor %}</ul></div>{% endif %}
 <div class="card"><div class="card-head"><h2>{{ icon('columns') }}Kolonlar</h2><span class="meta">{{ results.columns|length }}</span></div>
   <div class="table-wrap" style="max-height:380px"><table><thead><tr><th>Kolon</th><th>Tip</th><th>Açıklama</th></tr></thead><tbody>
   {% for c in results.columns %}<tr><td><a class="mono" href="{{ url_for('siron.table', owner=c.owner, name=c.table) }}#col-{{ c.name }}">{{ c.owner }}.{{ c.table }}.<b>{{ c.name }}</b></a></td><td class="small">{{ c.type_label }}</td><td class="small">{{ c.comment or '' }}</td></tr>
