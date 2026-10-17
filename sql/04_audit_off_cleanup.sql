@@ -1,13 +1,15 @@
 -- =====================================================================
--- İş bitince audit'i kapatın ve kayıtları temizleyin.
--- Uygulama kayıtları kendi SQLite dosyasına kopyaladığı için analiz kaybolmaz.
+-- İş bitince audit'i kapatın. Uygulama kayıtları kendi SQLite dosyasına
+-- kopyaladığı için analiz kaybolmaz.
 -- =====================================================================
 
--- ---------- Unified ----------
-NOAUDIT POLICY siron_trace_pol BY SIRON;
-DROP AUDIT POLICY siron_trace_pol;
+-- ÖRNEKTİR: açarken kullandığınız politika adı ve kullanıcılarla değiştirin.
+NOAUDIT POLICY sorgu_pol BY <kullanici1>, <kullanici2>;
+-- NOAUDIT POLICY sorgu_pol;          -- EXCEPT ile açtıysanız
 
--- Unified trail'deki TÜM kayıtları siler. Başka audit politikaları varsa
+DROP AUDIT POLICY sorgu_pol;
+
+-- Unified trail'deki TÜM kayıtları siler. Başka audit ayarları varsa
 -- DBA ile birlikte karar verin / önce arşivleyin.
 -- BEGIN
 --   DBMS_AUDIT_MGMT.CLEAN_AUDIT_TRAIL(
@@ -15,9 +17,3 @@ DROP AUDIT POLICY siron_trace_pol;
 --     use_last_arch_timestamp => FALSE);
 -- END;
 -- /
-
--- ---------- Traditional ----------
-NOAUDIT SELECT TABLE, INSERT TABLE, UPDATE TABLE, DELETE TABLE BY SIRON;
-NOAUDIT EXECUTE PROCEDURE BY SIRON;
--- DELETE FROM sys.aud$ WHERE userid = 'SIRON';
--- COMMIT;

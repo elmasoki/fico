@@ -36,7 +36,7 @@
 
 <div class="card">
   <h1>Nesne kataloğu</h1>
-  <p class="small">{{ object_count }} nesne yüklü ({{ settings.siron_schemas|join(', ') }}).
+  <p class="small">{{ object_count }} nesne yüklü ({{ settings.schemas|join(', ') }}).
     Katalog yüklüyse tablo tespiti SQL içindeki tüm gerçek nesne adlarına göre yapılır (paket/fonksiyonlar dahil);
     değilse FROM/JOIN/INTO/UPDATE sezgiseli kullanılır.</p>
   <form method="post" action="{{ url_for('siron.refresh_objects') }}"><button class="secondary">Kataloğu yenile</button></form>

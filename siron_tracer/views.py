@@ -79,9 +79,9 @@ def check():
 def refresh_objects():
     settings, oracle, store = _ctx()
     try:
-        objects = oracle.load_objects(settings.siron_schemas)
+        objects = oracle.load_objects(settings.schemas)
         store.replace_objects(objects)
-        flash("%d nesne yüklendi (%s)." % (len(objects), ", ".join(settings.siron_schemas)), "ok")
+        flash("%d nesne yüklendi (%s)." % (len(objects), ", ".join(settings.schemas)), "ok")
     except Exception as exc:
         flash("Nesne listesi alınamadı: %s" % exc, "error")
     return redirect(request.referrer or url_for(".index"))

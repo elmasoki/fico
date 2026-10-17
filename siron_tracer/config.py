@@ -38,8 +38,12 @@ class Settings:
     port: int = 5000
 
     @property
+    def schemas(self) -> List[str]:
+        return self.siron_schemas or [self.siron_db_user]
+
+    @property
     def current_schema(self) -> str:
-        return (self.siron_schemas or [self.siron_db_user])[0]
+        return self.schemas[0]
 
     @property
     def oracle_configured(self) -> bool:

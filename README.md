@@ -32,9 +32,22 @@ Makinede internet yoksa paketleri başka bir makinede indirip taşıyın:
 | Adım | Betik |
 |---|---|
 | Okuyucu kullanıcı ve yetkiler | `sql/01_reader_user.sql` |
-| Audit aç — 12c+ (önerilen) | `sql/02_unified_audit_on.sql` |
-| Audit aç — 11g / traditional | `sql/03_traditional_audit_on.sql` |
+| Audit aç (19c unified, örnek) | `sql/02_unified_audit_on.sql` |
 | İş bitince kapat / temizle | `sql/04_audit_off_cleanup.sql` |
+
+Uygulama audit politikasının adından ve kapsamından bağımsızdır; `UNIFIED_AUDIT_TRAIL`'i
+yalnızca `config.ini` → `[siron] db_user` kullanıcısına ve zaman aralığına göre okur.
+Tek şart, Siron'un bağlandığı DB kullanıcısının audit kapsamında olmasıdır.
+
+## Ekranlar
+
+| | |
+|---|---|
+| ![Ana sayfa](docs/screenshots/1_ana_sayfa.png) | ![Kayıt sürüyor](docs/screenshots/2_kayit_suruyor.png) |
+| ![Ekranın tabloları](docs/screenshots/3_ekran_tablolar.png) | ![SQL, bind ve sonuç](docs/screenshots/4_sql_bind_sonuc.png) |
+| ![Tablo haritası](docs/screenshots/5_tablo_haritasi.png) | ![Kurulum kontrolü](docs/screenshots/6_kurulum_kontrolu.png) |
+
+(Ekran görüntülerindeki veriler örnektir.)
 
 Önemli noktalar:
 
@@ -49,7 +62,7 @@ Makinede internet yoksa paketleri başka bir makinede indirip taşıyın:
    - Filtreler: OS kullanıcısı, host, program/module, client identifier
    - **Gürültü yakalaması:** Siron'da hiçbir şey yapmadan 1-2 dakikalık bir yakalama alıp
      "Gürültü olarak işaretle" deyin; o SQL_ID'ler diğer yakalamalarda otomatik gizlenir.
-4. `ACTIONS ALL` audit'i hacimli olabilir; yalnızca keşif süresince açık tutun ve sonra kapatın.
+4. Audit hacimli olabilir; yalnızca keşif süresince açık tutun ve sonra kapatın.
 
 ## Kullanım
 
