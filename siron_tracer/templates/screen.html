@@ -1,10 +1,11 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, table_link, status_badge, module_chip, empty with context %}
+{% from "_macros.html" import icon, table_link, status_badge, module_chip, empty, screen_edit_button, screen_edit_dialog with context %}
 {% block page_title %}{{ screen.name }}{% endblock %}
 {% block crumbs %}<a href="{{ url_for('siron.inventory') }}">Ekran envanteri</a>{{ icon('chev') }}{% if screen.module %}<a href="{{ url_for('siron.inventory', module=screen.module) }}">{{ screen.module }}</a>{{ icon('chev') }}{% endif %}<b>{{ screen.name }}</b>{% endblock %}
 {% block eyebrow %}{% set cls = {'todo':'', 'captured':'info', 'mapped':'warn', 'done':'ok', 'skip':''}[status] %}<div class="eyebrow">{{ icon('list') }}{{ screen.module or 'Modül yok' }} <span class="badge {{ cls }}">{{ SCREEN_STATUSES.get(status) }}</span>{% if screen.priority %} <span class="badge outline">{{ screen.priority }}</span>{% endif %}</div>{% endblock %}
-{% block subtitle %}<p class="sub">{{ screen.description or 'Açıklama yok.' }}{% if screen.notes %} · <span class="muted">{{ screen.notes }}</span>{% endif %}</p>{% endblock %}
+{% block subtitle %}<p class="sub" style="white-space:pre-line">{{ screen.description or 'Açıklama yok.' }}</p>{% if screen.notes %}<div class="callout mt8" style="white-space:pre-line">{{ icon('edit') }}<div>{{ screen.notes }}</div></div>{% endif %}{% endblock %}
 {% block actions %}
+  {{ screen_edit_button(screen, 'btn-secondary', 'Düzenle') }}
   <a class="btn btn-rec" href="{{ url_for('siron.captures', screen=screen.id) }}#new">{{ icon('record') }}Bu ekranı yakala</a>
 {% endblock %}
 {% block content %}
@@ -59,4 +60,5 @@
     {% else %}{{ empty('table', 'Tablo yok') }}{% endif %}
   </div>
 </div>
+{{ screen_edit_dialog(modules) }}
 {% endblock %}

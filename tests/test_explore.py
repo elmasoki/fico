@@ -145,3 +145,19 @@ def test_compare_captures(env):
     assert "SIRON.ALERT" not in html.split("yalnız A'da</p>")[1].split("</div>")[0]
     assert client.get("/captures/compare").status_code == 200
     assert "Karşılaştır" in client.get("/captures").get_data(as_text=True)
+
+
+def test_screen_edit_dialog(env):
+    client, oracle, store, _ = env
+    sid = store.add_screen("Hesap Hareketleri", "Müşteri")
+    html = client.get("/inventory").get_data(as_text=True)
+    assert 'id="screen-edit"' in html and "data-screen-edit=" in html and "Hesap Hareketleri" in html
+    assert 'id="screen-edit"' in client.get("/inventory/%d" % sid).get_data(as_text=True)
+    r = client.post("/inventory", data={"action": "update", "id": sid, "module": "Müşteri", "name": "Hesap Hareketleri",
+                                        "description": "Satır 1\nSatır 2", "priority": "Yüksek", "status": "mapped",
+                                        "notes": "Uzun not"}, headers={"Referer": "http://localhost/inventory/%d" % sid})
+    assert r.headers["Location"].endswith("/inventory/%d" % sid)          # saved from the screen page: stay there
+    s = store.get_screen(sid)
+    assert s["description"] == "Satır 1\nSatır 2" and s["status"] == "mapped" and s["notes"] == "Uzun not"
+    r = client.post("/inventory", data={"action": "delete", "id": sid}, headers={"Referer": "http://localhost/inventory/%d" % sid})
+    assert r.headers["Location"].endswith("/inventory") and store.get_screen(sid) is None

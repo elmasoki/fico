@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import icon, empty with context %}
+{% from "_macros.html" import icon, empty, screen_edit_button, screen_edit_dialog with context %}
 {% block page_title %}Ekran envanteri{% endblock %}
 {% block subtitle %}<p class="sub">Siron'daki tüm ekranların listesi. Yakalamalar ekranlara bağlandıkça kapsam ölçülür; "eksik bir şey kaldı mı?" sorusunun cevabı buradadır.</p>{% endblock %}
 {% block actions %}<a class="btn btn-secondary" href="{{ url_for('siron.mapping_xlsx') }}">{{ icon('sheet') }}Excel ile toplu düzenle</a>{% endblock %}
@@ -25,18 +25,7 @@
             {% if l.note %}<span class="n">{{ l.note }}</span>{% endif %}
             <span class="d" title="Yakalama">{{ icon('record') }}{{ l.capture_name }}</span><span class="d" title="Yakalama tarihi">{{ icon('clock') }}{{ (l.capture_start or '')[:16] }}</span></div>
           {% endfor %}{% if r.links|length > 3 %}<a class="xs" href="{{ url_for('siron.screen_page', screen_id=s.id) }}">+{{ r.links|length - 3 }} SQL daha</a>{% endif %}</td>
-        <td><details style="position:relative"><summary class="btn btn-ghost btn-sm" style="list-style:none">{{ icon('edit') }}</summary>
-          <div class="card" style="position:absolute;right:0;top:32px;width:340px;z-index:10;box-shadow:var(--shadow-lg)"><form class="card-body" method="post">
-            <input type="hidden" name="action" value="update"><input type="hidden" name="id" value="{{ s.id }}">
-            <div class="field"><label>Modül</label><input type="text" name="module" value="{{ s.module or '' }}"></div>
-            <div class="field"><label>Ekran</label><input type="text" name="name" value="{{ s.name }}"></div>
-            <div class="field"><label>Açıklama</label><input type="text" name="description" value="{{ s.description or '' }}"></div>
-            <div class="row"><div class="field"><label>Öncelik</label><input type="text" name="priority" value="{{ s.priority or '' }}"></div>
-              <div class="field"><label>Durum</label><select name="status">{% for k, v in SCREEN_STATUSES.items() %}<option value="{{ k }}" {% if s.status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div></div>
-            <div class="field"><label>Not</label><input type="text" name="notes" value="{{ s.notes or '' }}"></div>
-            <div class="flex"><button class="btn-primary btn-sm">Kaydet</button></div></form>
-            <form method="post" class="card-foot" onsubmit="return confirm('Ekran envanterden silinsin mi?')"><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="{{ s.id }}"><button class="btn-danger btn-sm">{{ icon('trash') }}Sil</button></form>
-          </div></details></td>
+        <td>{{ screen_edit_button(s) }}</td>
       </tr>{% endfor %}</tbody></table></div>
     {% else %}{{ empty('list', 'Envanter boş', '<span class="small">Sağdaki formla ekranları tek tek veya toplu ekleyin.</span>') }}{% endif %}
   </div>
@@ -64,4 +53,5 @@
     {% endif %}
   </div>
 </div>
+{{ screen_edit_dialog(modules) }}
 {% endblock %}

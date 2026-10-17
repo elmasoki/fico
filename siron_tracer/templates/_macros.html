@@ -179,3 +179,54 @@
   <a href="{{ url_for('siron.' ~ ep) }}" class="{{ 'on' if tab == key }}">{{ icon(ic) }}{{ text }}</a>{% endfor %}
 </nav>
 {% endmacro %}
+
+{% macro screen_edit_button(s, cls='btn-ghost btn-sm', text='') %}<button type="button" class="{{ cls }}" title="Ekranı düzenle"
+  data-screen-edit='{{ {"id": s.id, "module": s.module or "", "name": s.name, "description": s.description or "", "priority": s.priority or "",
+                        "status": s.status or "todo", "notes": s.notes or ""}|tojson }}'>{{ icon('edit') }}{{ text }}</button>{% endmacro %}
+
+{% macro screen_edit_dialog(modules) %}
+<dialog class="modal" id="screen-edit" aria-labelledby="screen-edit-title">
+  <form method="post" action="{{ url_for('siron.inventory') }}" class="modal-body">
+    <input type="hidden" name="id">
+    <div class="modal-head"><h2 id="screen-edit-title">{{ icon('edit') }}Ekranı düzenle</h2>
+      <button type="button" class="btn-ghost btn-sm" data-close title="Kapat (Esc)">{{ icon('x') }}</button></div>
+    <div class="row">
+      <div class="field"><label>Modül</label><input type="text" name="module" list="screen-edit-mods" placeholder="Müşteri">
+        <datalist id="screen-edit-mods">{% for m in modules %}<option value="{{ m }}">{% endfor %}</datalist></div>
+      <div class="field" style="flex:2"><label>Ekran adı</label><input type="text" name="name" required></div>
+    </div>
+    <div class="field"><label>Açıklama</label><textarea name="description" rows="3" placeholder="Ekran ne işe yarıyor, nereden açılıyor?"></textarea></div>
+    <div class="row">
+      <div class="field"><label>Öncelik</label><input type="text" name="priority" list="screen-edit-prio" placeholder="Yüksek">
+        <datalist id="screen-edit-prio"><option value="Yüksek"><option value="Orta"><option value="Düşük"></datalist></div>
+      <div class="field"><label>Durum</label><select name="status">{% for k, v in SCREEN_STATUSES.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="field mb0"><label>Not</label><textarea name="notes" rows="4" placeholder="Araştırma notları, açık sorular, iş biriminden gelen bilgiler"></textarea></div>
+    <div class="modal-foot">
+      <button class="btn-primary" name="action" value="update">{{ icon('check') }}Kaydet</button>
+      <button type="button" class="btn-secondary" data-close>Vazgeç</button>
+      <span class="spacer"></span>
+      <button type="submit" class="btn-danger" name="action" value="delete" formnovalidate
+              onclick="return confirm('Ekran envanterden silinsin mi? Bağlı SQL kayıtları da kaldırılır; yakalamalar silinmez.')">{{ icon('trash') }}Sil</button>
+    </div>
+  </form>
+</dialog>
+<script>
+(function () {
+  var dlg = document.getElementById("screen-edit");
+  if (!dlg || dlg.dataset.ready) return;
+  dlg.dataset.ready = "1";
+  var form = dlg.querySelector("form");
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-screen-edit]");
+    if (!btn) return;
+    var s = JSON.parse(btn.dataset.screenEdit);
+    Object.keys(s).forEach(function (k) { var f = form.elements[k]; if (f) f.value = s[k]; });
+    dlg.showModal();
+    form.elements.name.focus();
+  });
+  dlg.querySelectorAll("[data-close]").forEach(function (b) { b.addEventListener("click", function () { dlg.close(); }); });
+  dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close(); });   // click on the backdrop
+})();
+</script>
+{% endmacro %}

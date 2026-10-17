@@ -124,6 +124,10 @@ def inventory():
         elif action == "delete":
             store.delete_screen(form.get("id", type=int))
             flash("Ekran envanterden silindi.", "ok")
+            return redirect(url_for(".inventory"))
+        referrer = request.referrer or ""
+        if action == "update" and "/inventory/" in referrer:      # edited from the screen page: stay there
+            return redirect(referrer)
         return redirect(url_for(".inventory", module=request.args.get("module")))
     captures = store.list_captures()
     screens = store.list_screens()
@@ -172,6 +176,7 @@ def screen_page(screen_id):
         entry["linked"] = any((c["id"], sid) in linked_ids for c in entry["captures"] for sid in entry["sql_ids"])
         entry["status"] = ann(annotations, entry["key"]).get("status") or ""
     return render_template("screen.html", screen=screen, status=screen_status(screen, store.list_captures()),
+                           modules=sorted({s["module"] for s in store.list_screens() if s["module"]}),
                            captures=captures, links=links, tables=sorted(tables.values(), key=lambda e: e["key"][1]))
 
 
