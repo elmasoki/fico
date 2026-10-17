@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, table_link, col_link, empty with context %}
+{% block page_title %}Yakalama karşılaştırma{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.captures') }}">Yakalamalar</a>{{ icon('chev') }}<b>Karşılaştırma</b>{% endblock %}
+{% block subtitle %}<p class="sub">İki yakalamada ortak olan ve yalnız birinde görülen tablolar, SQL kalıpları ve kolonlar. Örneğin "Detay" düğmesine basmadan ve bastıktan sonraki iki yakalama, o düğmenin hangi tabloyu getirdiğini gösterir. Yalnız literal değeri farklı SQL'ler aynı kalıp sayılır.</p>{% endblock %}
+{% block content %}
+<form class="filters card" method="get" style="padding:12px 16px">
+  {% for n in [0, 1] %}<div class="field" style="min-width:260px"><label class="lbl">{{ 'A' if n == 0 else 'B' }} yakalaması</label><select name="c" required><option value="">— seçin —</option>
+    {% for c in captures %}<option value="{{ c.id }}" {% if ids|length > n and ids[n] == c.id %}selected{% endif %}>{{ c.name }} · {{ c.start_local[:16] }}</option>{% endfor %}</select></div>{% endfor %}
+  <button class="btn-primary">{{ icon('layers') }}Karşılaştır</button>
+</form>
+{% if a and b %}
+{% macro side_head(c, label) %}<span class="cmp-tag">{{ label }}</span><a href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a> <span class="xs muted">{{ c.start_local[:16] }}</span>{% endmacro %}
+<div class="mini-stats mb16">
+  <div class="mini-stat"><b>{{ diff.tables.a|length }}</b><span>tablo yalnız A'da</span></div>
+  <div class="mini-stat"><b>{{ diff.tables.both|length }}</b><span>ortak tablo</span></div>
+  <div class="mini-stat"><b>{{ diff.tables.b|length }}</b><span>tablo yalnız B'de</span></div>
+  <div class="mini-stat"><b>{{ diff.sql.a|length }} / {{ diff.sql.b|length }}</b><span>SQL kalıbı yalnız A / B</span></div>
+  <div class="mini-stat"><b>{{ diff.columns.a|length }} / {{ diff.columns.b|length }}</b><span>kolon yalnız A / B</span></div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>{{ icon('table') }}Tablolar</h2></div>
+  <div class="grid g3 cmp">
+    <div><h3>{{ side_head(a, 'A') }}</h3><p class="xs muted">yalnız A'da</p>{% for k in diff.tables.a %}{{ table_link(k, 'badge cmp-a') }}{% else %}<span class="muted small">—</span>{% endfor %}</div>
+    <div><h3>Ortak</h3><p class="xs muted">iki yakalamada da</p>{% for k in diff.tables.both %}{{ table_link(k, 'badge') }}{% else %}<span class="muted small">—</span>{% endfor %}</div>
+    <div><h3>{{ side_head(b, 'B') }}</h3><p class="xs muted">yalnız B'de</p>{% for k in diff.tables.b %}{{ table_link(k, 'badge cmp-b') }}{% else %}<span class="muted small">—</span>{% endfor %}</div>
+  </div>
+</div>
+{% for side, c, label in [('a', a, 'A'), ('b', b, 'B')] %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('code') }}Yalnız {{ label }}'da çalışan SQL'ler</h2><span class="meta">{{ diff.sql[side]|length }} kalıp · {{ c.name }}</span></div>
+  {% if diff.sql[side] %}
+  <div class="table-wrap" style="max-height:360px"><table>
+    <thead><tr><th>SQL_ID</th><th>İşlem</th><th>Tablolar</th><th>SQL</th></tr></thead>
+    <tbody>{% for st in diff.sql[side] %}<tr><td class="nowrap"><a class="mono" href="{{ url_for('siron.statement', capture_id=c.id, sql_id=st.sql_id) }}">{{ st.sql_id }}</a></td>
+      <td class="small">{{ st.action or '' }}</td><td class="small">{% for t in st.tables[:4] %}<span class="badge">{{ t[1] }}</span>{% endfor %}</td>
+      <td class="sqlcell" title="{{ st.sql_text[:2000] }}">{{ st.sql_text }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<div class="card-body small muted">Yok.</div>{% endif %}
+</div>
+{% endfor %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('columns') }}Kolonlar</h2><span class="meta">ortak {{ diff.columns.both }}</span></div>
+  <div class="grid g2 cmp">
+    <div><h3>{{ side_head(a, 'A') }}</h3>{% for col in diff.columns.a %}<div class="small">{{ col_link(col) }}</div>{% else %}<span class="muted small">—</span>{% endfor %}</div>
+    <div><h3>{{ side_head(b, 'B') }}</h3>{% for col in diff.columns.b %}<div class="small">{{ col_link(col) }}</div>{% else %}<span class="muted small">—</span>{% endfor %}</div>
+  </div>
+</div>
+{% elif ids %}<div class="callout warn">{{ icon('info') }}<div>Karşılaştırmak için iki yakalama seçin.</div></div>
+{% else %}<div class="card">{{ empty('layers', 'İki yakalama seçin', '<span class="small">Yakalamalar listesinde iki satırı işaretleyip <b>Karşılaştır</b> düğmesine de basabilirsiniz.</span>') }}</div>{% endif %}
+{% endblock %}

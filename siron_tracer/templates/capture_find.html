@@ -24,6 +24,17 @@
   </div>
 </form>
 {% if posted %}
+{% if bind_hits %}
+<div class="card">
+  <div class="card-head"><h2>{{ icon('zap') }}Bu değer bir SQL'e parametre olarak gitmiş</h2><span class="meta">{{ bind_hits|length }} SQL · ekranda arama kriteri olarak girildiyse filtreyi bu sorgular uygular</span></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>SQL_ID</th><th>Eşleşen bind</th><th class="num">Çalışma</th><th>SQL</th></tr></thead>
+    <tbody>{% for h in bind_hits %}<tr><td class="nowrap"><a class="mono" href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=h.sql_id, rec=h.record_id) }}">{{ h.sql_id }}</a></td>
+      <td>{% for pos, v in h.matches %}<mark class="bv small" title="{{ pos }}. bind">{{ v }}</mark> {% endfor %}</td><td class="num">{{ h.n }}</td>
+      <td class="sqlcell" title="{{ (h.sql_text or '')[:2000] }}">{{ h.sql_text }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
 <div class="card">
   <div class="card-head"><h2>{{ icon('check' if findings else 'search') }}{{ findings|length }} eşleşme</h2><span class="meta">{{ searched }} sorgu tarandı</span></div>
   {% if findings %}

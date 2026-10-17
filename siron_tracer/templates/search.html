@@ -19,6 +19,12 @@
   <div class="table-wrap" style="max-height:380px"><table><thead><tr><th>Kolon</th><th>Tip</th><th>Açıklama</th></tr></thead><tbody>
   {% for c in results.columns %}<tr><td><a class="mono" href="{{ url_for('siron.table', owner=c.owner, name=c.table) }}#col-{{ c.name }}">{{ c.owner }}.{{ c.table }}.<b>{{ c.name }}</b></a></td><td class="small">{{ c.type_label }}</td><td class="small">{{ c.comment or '' }}</td></tr>
   {% else %}<tr><td colspan="3" class="muted small">—</td></tr>{% endfor %}</tbody></table></div></div>
+<div class="card"><div class="card-head"><h2>{{ icon('zap') }}Bind değerlerinde</h2><span class="meta">{{ results.binds|length }} SQL · bu değer bir sorguya parametre olarak gitmiş</span></div>
+  <div class="table-wrap" style="max-height:380px"><table><thead><tr><th>Yakalama</th><th>Tarih</th><th>SQL_ID</th><th>Eşleşen bind</th><th class="num">Çalışma</th><th>SQL</th></tr></thead><tbody>
+  {% for h in results.binds %}<tr><td class="small" style="min-width:180px"><a href="{{ url_for('siron.capture', capture_id=h.capture_id) }}">{{ h.capture_name }}</a></td><td class="small nowrap">{{ (h.capture_start or '')[:16] }}</td>
+    <td><a class="mono" href="{{ url_for('siron.statement', capture_id=h.capture_id, sql_id=h.sql_id, rec=h.record_id) }}">{{ h.sql_id }}</a></td>
+    <td>{% for pos, v in h.matches %}<mark class="bv small" title="{{ pos }}. bind">{{ v }}</mark> {% endfor %}</td><td class="num">{{ h.n }}</td><td class="sqlcell" title="{{ (h.sql_text or '')[:2000] }}">{{ h.sql_text }}</td></tr>
+  {% else %}<tr><td colspan="6" class="muted small">—</td></tr>{% endfor %}</tbody></table></div></div>
 <div class="card"><div class="card-head"><h2>{{ icon('code') }}SQL'ler</h2><span class="meta">{{ results.statements|length }}</span></div>
   <div class="table-wrap" style="max-height:380px"><table><thead><tr><th>Ekran</th><th>SQL_ID</th><th>SQL</th></tr></thead><tbody>
   {% for s in results.statements %}<tr><td class="small">{{ s.capture_name }}</td><td><a class="mono" href="{{ url_for('siron.statement', capture_id=s.capture_id, sql_id=s.sql_id) }}">{{ s.sql_id }}</a></td><td class="sqlcell">{{ s.sql_text }}</td></tr>

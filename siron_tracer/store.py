@@ -106,6 +106,12 @@ CREATE TABLE IF NOT EXISTS activity (
     detail TEXT, sql_text TEXT, rows INTEGER
 );
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS screen_sqls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    screen_id INTEGER NOT NULL, capture_id INTEGER NOT NULL, sql_id TEXT NOT NULL,
+    note TEXT, created_at TEXT NOT NULL,
+    UNIQUE (screen_id, capture_id, sql_id)
+);
 """ % ",\n    ".join("%s TEXT" % f for f in RECORD_FIELDS)
 
 # columns added after the first release: (table, column, definition)
@@ -227,6 +233,7 @@ class Store:
         with self._lock, self._conn() as db:
             db.executemany("DELETE FROM records WHERE capture_id = ?", ids)
             db.executemany("UPDATE snapshots SET capture_id = NULL WHERE capture_id = ?", ids)
+            db.executemany("DELETE FROM screen_sqls WHERE capture_id = ?", ids)
             deleted = sum(db.execute("DELETE FROM captures WHERE id = ?", i).rowcount for i in ids)
             self._bump()
         return deleted
@@ -258,6 +265,20 @@ class Store:
                 "WHERE r.sql_text LIKE ? GROUP BY r.capture_id, c.name, r.sql_id LIMIT ?",
                 ("%" + text + "%", limit)).fetchall()
             return [dict(r) for r in rows]
+
+    def search_binds(self, value: str, capture_id: Optional[int] = None, limit: int = 2000) -> List[dict]:
+        """Records whose raw audit binds contain `value` (case-insensitive); callers check the parsed values."""
+        sql = ("SELECT r.id, r.capture_id, c.name AS capture_name, c.start_local AS capture_start, r.sql_id, "
+               "r.sql_text, r.sql_binds, r.ts FROM records r JOIN captures c ON c.id = r.capture_id "
+               "WHERE r.sql_binds IS NOT NULL AND UPPER(r.sql_binds) LIKE UPPER(?)")
+        args: list = ["%" + value + "%"]
+        if capture_id is not None:
+            sql += " AND r.capture_id = ?"
+            args.append(capture_id)
+        sql += " ORDER BY c.start_local DESC, r.ts LIMIT ?"
+        args.append(limit)
+        with self._conn() as db:
+            return [dict(r) for r in db.execute(sql, args).fetchall()]
 
     def noise_sql_ids(self) -> Set[str]:
         with self._conn() as db:
@@ -405,8 +426,45 @@ class Store:
     def delete_screen(self, screen_id: int):
         with self._lock, self._conn() as db:
             db.execute("UPDATE captures SET screen_id = NULL WHERE screen_id = ?", (screen_id,))
+            db.execute("DELETE FROM screen_sqls WHERE screen_id = ?", (screen_id,))
             db.execute("DELETE FROM screens WHERE id = ?", (screen_id,))
             self._bump()
+
+    # ------------------------------------------------------------------ screen <-> SQL links
+    def link_sql(self, screen_id: int, capture_id: int, sql_id: str, note: Optional[str] = None) -> int:
+        """Attach a captured SQL to an inventory screen; linking again only updates the note."""
+        with self._lock, self._conn() as db:
+            db.execute("INSERT INTO screen_sqls (screen_id, capture_id, sql_id, note, created_at) VALUES (?,?,?,?,?) "
+                       "ON CONFLICT (screen_id, capture_id, sql_id) DO UPDATE SET note = excluded.note",
+                       (screen_id, capture_id, sql_id, note or None, now()))
+            return db.execute("SELECT id FROM screen_sqls WHERE screen_id = ? AND capture_id = ? AND sql_id = ?",
+                              (screen_id, capture_id, sql_id)).fetchone()[0]
+
+    def unlink_sql(self, link_id: int):
+        with self._lock, self._conn() as db:
+            db.execute("DELETE FROM screen_sqls WHERE id = ?", (link_id,))
+
+    def screen_sqls(self, screen_id: Optional[int] = None, capture_id: Optional[int] = None,
+                    sql_id: Optional[str] = None) -> List[dict]:
+        """Links with the capture (name, time) and the SQL (text, action, first run) they point to."""
+        where, args = [], []
+        for col, val in (("l.screen_id", screen_id), ("l.capture_id", capture_id), ("l.sql_id", sql_id)):
+            if val is not None:
+                where.append("%s = ?" % col)
+                args.append(val)
+        sql = ("SELECT l.*, c.name AS capture_name, c.start_local AS capture_start, c.kind AS capture_kind, "
+               "s.name AS screen_name, s.module AS screen_module, "
+               "(SELECT r.sql_text FROM records r WHERE r.capture_id = l.capture_id AND r.sql_id = l.sql_id "
+               " ORDER BY r.ts LIMIT 1) AS sql_text, "
+               "(SELECT r.action FROM records r WHERE r.capture_id = l.capture_id AND r.sql_id = l.sql_id "
+               " ORDER BY r.ts LIMIT 1) AS action, "
+               "(SELECT MIN(r.ts) FROM records r WHERE r.capture_id = l.capture_id AND r.sql_id = l.sql_id) AS first_ts "
+               "FROM screen_sqls l JOIN captures c ON c.id = l.capture_id JOIN screens s ON s.id = l.screen_id")
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " ORDER BY s.module, s.name, c.start_local, l.id"
+        with self._conn() as db:
+            return [dict(r) for r in db.execute(sql, args).fetchall()]
 
     # ------------------------------------------------------------------ profiles
     def save_profile(self, owner: str, table: str, column: str, data: dict):

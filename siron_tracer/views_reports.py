@@ -150,9 +150,14 @@ def mapping_xlsx():
                         a.get("target"), a.get("note")])
     relations = [[label(r.child), ", ".join(r.child_cols), label(r.parent), ", ".join(r.parent_cols), r.confidence,
                   ", ".join(r.sources), "%d/%d" % r.check if r.check else ""] for r in rels]
+    links = {}
+    for l in store.screen_sqls():
+        links.setdefault(l["screen_id"], []).append("%s (%s, %s)%s" % (
+            l["sql_id"], l["capture_name"], (l["capture_start"] or "")[:16], " - " + l["note"] if l["note"] else ""))
     inventory = [[s["id"], s["module"], s["name"], s["description"], s["priority"],
                   SCREEN_STATUSES.get(screen_status(s, captures), s["status"]),
-                  sum(1 for c in captures if c.get("screen_id") == s["id"]), s["notes"]] for s in screens_inv]
+                  sum(1 for c in captures if c.get("screen_id") == s["id"]), s["notes"],
+                  "\n".join(links.get(s["id"], []))] for s in screens_inv]
     data = export_workbook(summary, screens, tables, columns, relations, inventory)
     log("export_xlsx", "Excel eşleme çalışma kitabı (%d kolon)" % len(columns), rows=len(columns))
     return Response(data, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

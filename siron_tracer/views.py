@@ -15,11 +15,12 @@ from .jobs import JOB_KINDS
 from .privacy import MASK_MODES
 from .sources import AuditFilter
 from .sqlinsight import USAGE_LABELS, analyse_sql, map_result_columns
-from .sqlutil import BindSlot, build_slots, find_placeholders, format_sql, parse_audit_binds, substitute_binds
+from .sqlutil import (BindSlot, bind_segments, build_slots, find_placeholders, format_sql, parse_audit_binds,
+                      substitute_binds)
 from . import knowledge
 from .store import parse_ts
 from .web import (CAPTURE_KINDS, STATUSES, capture_analysis, capture_or_404, capture_schema, ctx, ext,
-                  get_catalog, is_sensitive, known_schemas, known_users, literal_for, log, masked,
+                  find_in_binds, get_catalog, is_sensitive, known_schemas, known_users, literal_for, log, masked,
                   project_analysis, project_relations, relations_for, remember)
 
 bp = Blueprint("siron", __name__)
@@ -458,7 +459,8 @@ def capture_find(capture_id):
                                      "source": sources[c], "count": count, "rows": len(rows),
                                      "sample": rows[first][c]})
         log("search", "Ekrandaki değer araması '%s' (%s): %d eşleşme" % (needle, capture["name"], len(findings)))
-    return render_template("capture_find.html", capture=capture, ca=ca, needle=needle, mode=mode,
+    bind_hits = find_in_binds(needle, capture_id, exact=mode == "exact") if needle and request.method == "POST" else []
+    return render_template("capture_find.html", capture=capture, ca=ca, needle=needle, mode=mode, bind_hits=bind_hits,
                            strategy=strategy, findings=findings, errors=errors, searched=searched,
                            modes=MODES, posted=request.method == "POST", tab="find")
 
@@ -539,9 +541,11 @@ def statement(capture_id, sql_id):
     literal = substitute_binds(st.sql_text, placeholders, slots)
     # Use the textarea only when the user edited it by hand; otherwise the
     # literal rebuilt from the (possibly changed) bind values wins.
+    edited = False
     if (form.get("do") in ("run", "snapshot", "html", "csv") and form.get("sql_override")
             and form["sql_override"].strip() != form.get("literal_orig", "").strip()):
         literal = form["sql_override"]
+        edited = True
 
     do = form.get("do")
     if do == "csv":
@@ -580,7 +584,9 @@ def statement(capture_id, sql_id):
     relations = relations_for(st.insight.tables, [(st.sql_id, st.insight)], infer=False) \
         if st.insight.joins else []
     variants = [s for s in ca.statements if s.signature == st.signature and s.sql_id != st.sql_id]
-    return render_template("statement.html", capture=capture, st=st, execution=execution,
+    return render_template("statement.html", capture=capture, st=st, execution=execution, edited=edited,
+                           segments=bind_segments(st.sql_text, slots, formatted=True),
+                           links=store.screen_sqls(sql_id=sql_id), screens=store.list_screens(),
                            slots=slots, literal=literal, result=result, error=error, sources=_labels(sources),
                            cursor=cursor, cursor_error=cursor_error, relations=relations, variants=variants,
                            columns=sorted(st.insight.columns.items(), key=lambda kv: tuple(x or "" for x in kv[0])),
@@ -649,4 +655,4 @@ def capture_csv(capture_id):
                                "bindler", "sql_bind_yerlestirilmis"], "capture_%d.csv" % capture_id)
 
 
-from . import views_catalog, views_ops, views_reports, views_research  # noqa: E402,F401  (register their routes on bp)
+from . import views_catalog, views_explore, views_ops, views_reports, views_research  # noqa: E402,F401  (register their routes on bp)

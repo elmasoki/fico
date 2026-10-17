@@ -84,8 +84,8 @@ def export_workbook(summary: List[list], screens: List[list], tables: List[list]
 
     _sheet(wb, "İlişkiler", ["Alt tablo", "Alt kolonlar", "Üst tablo", "Üst kolonlar", "Güven", "Kaynak",
                              "Veri kontrolü"], relations, {1: 30, 2: 24, 3: 30, 4: 24, 6: 30})
-    i_headers = ["ID", "Modül", "Ekran", "Açıklama", "Öncelik", "Durum", "Yakalama sayısı", "Not"]
-    _sheet(wb, "Envanter", i_headers, inventory, {2: 24, 3: 40, 4: 40, 8: 40},
+    i_headers = ["ID", "Modül", "Ekran", "Açıklama", "Öncelik", "Durum", "Yakalama sayısı", "Not", "Bağlı SQL'ler"]
+    _sheet(wb, "Envanter", i_headers, inventory, {2: 24, 3: 40, 4: 40, 8: 40, 9: 60},
            editable=["Modül", "Ekran", "Açıklama", "Öncelik", "Durum", "Not"])
     out = io.BytesIO()
     wb.save(out)

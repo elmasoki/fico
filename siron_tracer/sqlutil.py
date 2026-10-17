@@ -244,6 +244,31 @@ def substitute_binds(sql: str, placeholders: List[Placeholder], slots: List[Bind
     return "".join(out)
 
 
+def bind_segments(sql: str, slots: List[BindSlot], formatted: bool = False) -> List[Tuple[str, Optional[int]]]:
+    """The literal SQL as (text, slot index) pieces, so substituted values can be highlighted.
+
+    Pieces with a slot index are bind values (or the bare placeholder when the value is missing).
+    With formatted=True the readable layout of format_sql is used when it keeps every placeholder.
+    """
+    text = format_sql(sql) if formatted else sql
+    placeholders = find_placeholders(text)
+    if formatted and len(placeholders) != len(find_placeholders(sql)):
+        return bind_segments(sql, slots)
+    owner = {idx: si for si, slot in enumerate(slots) for idx in slot.occurrences}
+    out: List[Tuple[str, Optional[int]]] = []
+    last = 0
+    for idx, p in enumerate(placeholders):
+        out.append((text[last:p.start], None))
+        si = owner.get(idx)
+        if si is None or slots[si].missing:
+            out.append((p.text, si))
+        else:
+            out.append((to_literal(slots[si].value, slots[si].kind), si))
+        last = p.end
+    out.append((text[last:], None))
+    return [seg for seg in out if seg[0]]
+
+
 def literal_sql(sql: str, raw_binds: Optional[str]) -> Tuple[str, List[BindSlot]]:
     """Convenience: audit SQL text + raw audit binds -> (literal SQL, slots)."""
     placeholders = find_placeholders(sql)

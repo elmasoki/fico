@@ -40,6 +40,13 @@ def test_capture_to_extract(settings, audit_policy, tmp_path):
 
     r = client.post("/captures/%d/sql/%s" % (cid, compute_sql_id(SQL)), data={"do": "run"})
     assert "Müşteri 7" in r.get_data(as_text=True)
+    html = client.get("/captures/%d/sql/%s" % (cid, compute_sql_id(SQL))).get_data(as_text=True)
+    assert "&#39;C0007&#39;<sup>1</sup>" in html                         # audited bind highlighted in the SQL
+    assert "Adım 1" in client.get("/captures/%d/timeline" % cid).get_data(as_text=True)
+    assert compute_sql_id(SQL) in client.get("/search?q=c0007").get_data(as_text=True).split("Bind değerlerinde")[1]
+    client.post("/inventory/sql", data={"capture_id": cid, "sql_id": compute_sql_id(SQL), "new_screen": "Müşteri > Detay",
+                                        "note": "Ad ve IBAN"})
+    assert "Ad ve IBAN" in client.get("/inventory").get_data(as_text=True)
     r = client.post("/captures/%d/find" % cid, data={"value": "müşteri 7", "mode": "ci", "strategy": "results"})
     assert "SIRON.CUSTOMER.FULL_NAME" in r.get_data(as_text=True)
 

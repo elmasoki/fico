@@ -13,8 +13,8 @@ from .coverage import SCREEN_STATUSES, compute as compute_coverage, screen_statu
 from .migration import COLUMN_MODES, build_plan, extract, package_zip
 from .views import bp, csv_response
 from .views_reports import mapping_rows
-from .web import (ctx, ext, get_catalog, known_schemas, known_users, log, project_analysis, project_relations,
-                  remember)
+from .web import (ann, capture_analysis, ctx, ext, get_catalog, known_schemas, known_users, log, project_analysis,
+                  project_relations, remember)
 
 
 # --------------------------------------------------------------------------- jobs
@@ -132,14 +132,79 @@ def inventory():
     for c in captures:
         if c.get("screen_id"):
             by_screen.setdefault(c["screen_id"], []).append(c)
+    links = {}
+    for link in store.screen_sqls():
+        links.setdefault(link["screen_id"], []).append(link)
     rows = []
     for s in screens:
         if module and (s["module"] or "") != module:
             continue
-        rows.append({"s": s, "status": screen_status(s, captures), "captures": by_screen.get(s["id"], [])})
+        rows.append({"s": s, "status": screen_status(s, captures), "links": links.get(s["id"], []),
+                     "captures": sorted(by_screen.get(s["id"], []), key=lambda c: c["start_local"], reverse=True)})
     modules = sorted({s["module"] for s in screens if s["module"]})
     return render_template("inventory.html", rows=rows, modules=modules, module=module, total=len(screens),
                            unlinked=[c for c in captures if not c.get("screen_id") and not c["is_noise"]])
+
+
+@bp.route("/inventory/<int:screen_id>")
+def screen_page(screen_id):
+    """Everything known about one Siron screen: captures, linked SQLs, tables."""
+    _, _, store = ctx()
+    screen = store.get_screen(screen_id)
+    if screen is None:
+        abort(404)
+    captures = sorted([c for c in store.list_captures() if c.get("screen_id") == screen_id],
+                      key=lambda c: c["start_local"], reverse=True)
+    links = store.screen_sqls(screen_id=screen_id)
+    annotations = store.annotations()
+    tables = {}
+    for c in captures:
+        if c["status"] != "done":
+            continue
+        ca = capture_analysis(c)
+        for t in ca.tables:
+            entry = tables.setdefault(t.key, {"key": t.key, "captures": [], "sql_ids": set(), "indirect": True})
+            entry["captures"].append(c)
+            entry["sql_ids"] |= {st.sql_id for st in t.statements}
+            entry["indirect"] = entry["indirect"] and t.indirect
+    linked_ids = {(l["capture_id"], l["sql_id"]) for l in links}
+    for entry in tables.values():
+        entry["linked"] = any((c["id"], sid) in linked_ids for c in entry["captures"] for sid in entry["sql_ids"])
+        entry["status"] = ann(annotations, entry["key"]).get("status") or ""
+    return render_template("screen.html", screen=screen, status=screen_status(screen, store.list_captures()),
+                           captures=captures, links=links, tables=sorted(tables.values(), key=lambda e: e["key"][1]))
+
+
+@bp.post("/inventory/sql")
+def screen_sql_link():
+    """Link one captured SQL to an inventory screen (optionally creating the screen)."""
+    _, _, store = ctx()
+    form = request.form
+    capture_id, sql_id = form.get("capture_id", type=int), (form.get("sql_id") or "").strip()
+    capture = store.get_capture(capture_id) if capture_id else None
+    if not capture or not sql_id:
+        flash("Yakalama ve SQL_ID gerekli.", "error")
+        return redirect(request.referrer or url_for(".inventory"))
+    screen_id = form.get("screen_id", type=int)
+    new_name = (form.get("new_screen") or "").strip()
+    if new_name:
+        module, _, name = new_name.rpartition(">")
+        screen_id = store.add_screen(name.strip(), module.strip() or None)
+    if not screen_id or not store.get_screen(screen_id):
+        flash("Bir ekran seçin veya yeni ekran adı yazın.", "error")
+        return redirect(request.referrer or url_for(".inventory"))
+    store.link_sql(screen_id, capture_id, sql_id, form.get("note"))
+    if not capture.get("screen_id"):
+        store.update_capture(capture_id, screen_id=screen_id)
+    flash("SQL %s ekrana bağlandı: %s" % (sql_id, store.get_screen(screen_id)["name"]), "ok")
+    return redirect(request.referrer or url_for(".screen_page", screen_id=screen_id))
+
+
+@bp.post("/inventory/sql/<int:link_id>/delete")
+def screen_sql_unlink(link_id):
+    ctx()[2].unlink_sql(link_id)
+    flash("SQL bağlantısı kaldırıldı.", "ok")
+    return redirect(request.referrer or url_for(".inventory"))
 
 
 @bp.post("/inventory/link")

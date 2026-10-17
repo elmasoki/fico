@@ -10,7 +10,7 @@ from .profiling import quality_flags
 from .relations import (SOURCE_LABELS, build_select, find_join_tree, parse_relation_id, qualified,
                         relation_id, to_dot, to_mermaid)
 from .views import bp, search_table
-from .web import (ann, capture_analysis, capture_or_404, ctx, er_view, ext, get_catalog, is_sensitive,
+from .web import (ann, capture_analysis, capture_or_404, ctx, er_view, ext, find_in_binds, get_catalog, is_sensitive,
                   known_schemas, log, parse_key, project_analysis, project_relations, relations_for, table_like)
 
 
@@ -313,7 +313,8 @@ def builder():
 def search():
     _, _, store = ctx()
     q = request.args.get("q", "").strip()
-    results = {"captures": [], "tables": [], "columns": [], "statements": [], "notes": [], "screens": [], "research": []}
+    results = {"captures": [], "tables": [], "columns": [], "statements": [], "notes": [], "screens": [], "research": [],
+               "binds": []}
     if q:
         up = q.upper()
         results["captures"] = [c for c in store.list_captures() if up in c["name"].upper()
@@ -333,6 +334,7 @@ def search():
         results["research"] = [t for t in knowledge.KNOWN_TABLES
                                if up in t.name or up in t.meaning.upper() or up in t.expansion.upper()][:30]
         results["statements"] = store.search_sql(q)
+        results["binds"] = find_in_binds(q)[:100]
         results["notes"] = [a for a in store.annotations().values()
                             if up in (a.get("note") or "").upper() or up in (a.get("target") or "").upper()]
     return render_template("search.html", q=q, results=results,

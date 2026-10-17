@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, table_link, status_badge, module_chip, empty with context %}
+{% block page_title %}{{ screen.name }}{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.inventory') }}">Ekran envanteri</a>{{ icon('chev') }}{% if screen.module %}<a href="{{ url_for('siron.inventory', module=screen.module) }}">{{ screen.module }}</a>{{ icon('chev') }}{% endif %}<b>{{ screen.name }}</b>{% endblock %}
+{% block eyebrow %}{% set cls = {'todo':'', 'captured':'info', 'mapped':'warn', 'done':'ok', 'skip':''}[status] %}<div class="eyebrow">{{ icon('list') }}{{ screen.module or 'Modül yok' }} <span class="badge {{ cls }}">{{ SCREEN_STATUSES.get(status) }}</span>{% if screen.priority %} <span class="badge outline">{{ screen.priority }}</span>{% endif %}</div>{% endblock %}
+{% block subtitle %}<p class="sub">{{ screen.description or 'Açıklama yok.' }}{% if screen.notes %} · <span class="muted">{{ screen.notes }}</span>{% endif %}</p>{% endblock %}
+{% block actions %}
+  <a class="btn btn-rec" href="{{ url_for('siron.captures', screen=screen.id) }}#new">{{ icon('record') }}Bu ekranı yakala</a>
+{% endblock %}
+{% block content %}
+<div class="mini-stats mb16">
+  <div class="mini-stat"><b>{{ captures|length }}</b><span>yakalama</span></div>
+  <div class="mini-stat"><b>{{ links|length }}</b><span>bağlı SQL</span></div>
+  <div class="mini-stat"><b>{{ tables|length }}</b><span>tablo</span></div>
+  <div class="mini-stat"><b>{{ tables|selectattr('status')|list|length }}</b><span>kararlı tablo</span></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{ icon('code') }}Bağlı SQL'ler</h2><span class="meta">bu ekranın verisini getiren sorgular</span></div>
+  {% if links %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>SQL_ID</th><th>Ne işe yarıyor</th><th>Yakalama</th><th>Yakalama tarihi</th><th>İlk çalışma</th><th>İşlem</th><th>SQL</th><th class="tight"></th></tr></thead>
+    <tbody>{% for l in links %}
+      <tr><td class="nowrap"><a class="mono" href="{{ url_for('siron.statement', capture_id=l.capture_id, sql_id=l.sql_id) }}">{{ l.sql_id }}</a></td>
+        <td class="small" style="min-width:180px;white-space:normal">{{ l.note or '' }}</td>
+        <td class="small" style="min-width:170px"><a href="{{ url_for('siron.capture', capture_id=l.capture_id) }}">{{ l.capture_name }}</a></td>
+        <td class="small nowrap">{{ (l.capture_start or '')[:16] }}</td>
+        <td class="small nowrap mono muted">{{ (l.first_ts or '')[11:19] }}</td>
+        <td class="small">{{ l.action or '' }}</td>
+        <td class="sqlcell" style="max-width:420px" title="{{ (l.sql_text or '')[:2000] }}">{{ l.sql_text or '' }}</td>
+        <td><form method="post" action="{{ url_for('siron.screen_sql_unlink', link_id=l.id) }}" onsubmit="return confirm('Bağlantı kaldırılsın mı?')"><button class="btn-ghost btn-sm" title="Bağlantıyı kaldır">{{ icon('x') }}</button></form></td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}{{ empty('code', 'Henüz bağlı SQL yok', '<span class="small">Bir yakalamanın SQL detay sayfasında <b>Ekran envanterine bağla</b> ile bu ekranın verisini getiren sorguları işaretleyin.</span>') }}{% endif %}
+</div>
+
+<div class="grid g2">
+  <div class="card" style="margin:0">
+    <div class="card-head"><h2>{{ icon('record') }}Yakalamalar</h2><span class="meta">{{ captures|length }}</span></div>
+    {% if captures %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Yakalama</th><th>Tarih (DB)</th><th>Tür</th><th class="num">Kayıt</th></tr></thead>
+      <tbody>{% for c in captures %}<tr><td><a class="cell-title" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>{% if c.notes %}<span class="cell-sub">{{ c.notes }}</span>{% endif %}</td>
+        <td class="small nowrap">{{ c.start_local[:16] }}<span class="cell-sub">→ {{ (c.end_local or '')[11:16] or 'devam ediyor' }}</span></td>
+        <td class="small">{{ CAPTURE_KINDS.get(c.kind, c.kind) }}{% if c.is_noise %} · gürültü{% endif %}</td><td class="num">{{ c.record_count|thousands }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}{{ empty('record', 'Yakalama yok', '<span class="small">Sağ üstteki düğmeyle bu ekran için yakalama başlatın.</span>') }}{% endif %}
+  </div>
+  <div class="card" style="margin:0">
+    <div class="card-head"><h2>{{ icon('table') }}Tablolar</h2><span class="meta">bu ekranın yakalamalarında görülen</span></div>
+    {% if tables %}
+    <div class="table-wrap" style="max-height:420px"><table>
+      <thead><tr><th>Tablo</th><th>Modül</th><th>Durum</th><th class="num">SQL</th></tr></thead>
+      <tbody>{% for t in tables %}{% set rs = research_of(t.key[1]) %}
+        <tr><td class="nowrap">{{ table_link(t.key, 'cell-title') }}{% if t.linked %} <span class="badge info" title="Bağlı SQL'lerden birinde geçiyor">bağlı SQL</span>{% endif %}{% if t.indirect %} <span class="badge">dolaylı</span>{% endif %}</td>
+          <td style="max-width:180px">{% if rs %}{{ module_chip(rs.module) }}{% endif %}</td><td>{{ status_badge(t.status) }}</td><td class="num">{{ t.sql_ids|length }}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+    {% else %}{{ empty('table', 'Tablo yok') }}{% endif %}
+  </div>
+</div>
+{% endblock %}

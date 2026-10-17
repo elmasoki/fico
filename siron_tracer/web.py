@@ -1,6 +1,7 @@
 """Helpers shared by the Flask views."""
 from __future__ import annotations
 
+from collections import OrderedDict
 from typing import Dict, Iterable, List, Optional
 
 from flask import abort, current_app
@@ -141,6 +142,29 @@ def literal_for(sql_text: str, raw_binds: Optional[str]):
     placeholders = find_placeholders(sql_text)
     slots = build_slots(placeholders, parse_audit_binds(raw_binds))
     return substitute_binds(sql_text, placeholders, slots), slots
+
+
+def find_in_binds(value: str, capture_id: Optional[int] = None, exact: bool = False) -> List[dict]:
+    """SQLs that received `value` as a bind, one row per capture + SQL_ID with the matching positions."""
+    needle = (value or "").strip().upper()
+    if not needle:
+        return []
+    hits: "OrderedDict[tuple, dict]" = OrderedDict()
+    for r in ctx()[2].search_binds(needle, capture_id):
+        binds = parse_audit_binds(r["sql_binds"])
+        matched = [b for b in binds if b.value is not None and
+                   (b.value.upper() == needle if exact else needle in b.value.upper())]
+        if not matched:
+            continue
+        key = (r["capture_id"], r["sql_id"])
+        hit = hits.get(key)
+        if hit is None:
+            hit = hits[key] = {"capture_id": r["capture_id"], "capture_name": r["capture_name"],
+                               "capture_start": r["capture_start"], "sql_id": r["sql_id"], "sql_text": r["sql_text"],
+                               "record_id": r["id"], "first_ts": r["ts"], "n": 0,
+                               "matches": [(b.position, b.value) for b in matched]}
+        hit["n"] += 1
+    return list(hits.values())
 
 
 # --------------------------------------------------------------------------- privacy

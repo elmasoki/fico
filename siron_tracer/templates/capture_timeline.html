@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, capture_nav, capture_crumbs, empty with context %}
+{% block page_title %}{{ capture.name }}{% endblock %}
+{% block crumbs %}{{ capture_crumbs(capture, 'Zaman akışı') }}{% endblock %}
+{% block subtitle %}<p class="sub">SQL'ler çalışma sırasıyla. Aralarında <b>{{ '%g'|format(gap) }} saniyeden</b> uzun bir duraklama olan yerlerden <b>adımlara</b> ayrıldı; her adım genellikle Siron'daki bir kullanıcı hareketine (ekranı açma, arama, sekmeye tıklama) karşılık gelir.</p>{% endblock %}
+{% block content %}
+{{ capture_nav(capture, tab, ca) }}
+<form class="filters card" method="get" style="padding:12px 16px">
+  <div class="field"><label class="lbl">Adım ayırma eşiği</label><select name="gap" onchange="this.form.submit()">
+    {% for g in [0.5, 1, 2, 3, 5, 10, 30] %}<option value="{{ g }}" {% if g == gap %}selected{% endif %}>{{ '%g'|format(g) }} sn duraklama</option>{% endfor %}
+    {% if gap not in [0.5, 1, 2, 3, 5, 10, 30] %}<option selected value="{{ gap }}">{{ '%g'|format(gap) }} sn</option>{% endif %}</select></div>
+  {% if noise_count %}<label class="check" style="margin:18px 0 0"><input type="checkbox" name="noise" value="1" {% if hide_noise %}checked{% endif %} onchange="this.form.submit()"><span>Gürültü SQL'lerini gizle <small>({{ noise_count }} SQL_ID)</small></span></label><input type="hidden" name="noise" value="0">{% endif %}
+  <span class="spacer"></span>
+  <span class="small muted">{{ steps|length }} adım · {{ steps|sum(attribute='sql_count') }} çalışma</span>
+</form>
+
+{% if steps %}
+<form method="post" action="{{ url_for('siron.screen_sql_link_bulk') }}" id="tl-form">
+  <input type="hidden" name="capture_id" value="{{ capture.id }}">
+  <div class="card tl-bar">
+    <div class="card-body toolbar" style="flex-wrap:wrap;gap:10px">
+      <b class="small" id="tl-count">0 SQL seçili</b>
+      <div class="field" style="min-width:220px"><select name="screen_id"><option value="">— ekran seçin —</option>
+        {% for sc in screens %}<option value="{{ sc.id }}" {% if sc.id == capture.screen_id %}selected{% endif %}>{% if sc.module %}{{ sc.module }} › {% endif %}{{ sc.name }}</option>{% endfor %}</select></div>
+      <div class="field"><input type="text" name="new_screen" placeholder="veya yeni: Modül > Ekran"></div>
+      <div class="field" style="flex:1;min-width:200px"><input type="text" name="note" placeholder="Not: ör. Arama butonu sonrası liste"></div>
+      <button class="btn-primary btn-sm" id="tl-link" disabled>{{ icon('link') }}Seçilenleri ekrana bağla</button>
+    </div>
+  </div>
+
+  <div class="timeline">
+  {% for step in steps %}
+    <section class="tl-step">
+      <header class="tl-head">
+        <label class="tl-check" title="Bu adımın tüm SQL'lerini seç"><input type="checkbox" data-step="{{ step.index }}"></label>
+        <span class="tl-no">Adım {{ step.index }}</span>
+        <span class="small tnum">+{{ '%.1f'|format(step.start) }} sn</span>
+        {% if step.duration %}<span class="xs muted tnum">süre {{ '%.1f'|format(step.duration) }} sn</span>{% endif %}
+        {% if step.gap_before %}<span class="xs muted tnum">önceki adımdan {{ '%.1f'|format(step.gap_before) }} sn sonra</span>{% endif %}
+        <span class="badge">{{ step.sql_count }} çalışma</span>
+        <span class="tl-tables">{% for t in step.tables[:8] %}<a class="badge outline" href="{{ url_for('siron.table', owner=t[0] or '-', name=t[1]) }}">{{ t[1] }}</a>{% endfor %}{% if step.tables|length > 8 %}<span class="xs muted">+{{ step.tables|length - 8 }}</span>{% endif %}</span>
+      </header>
+      <div class="table-wrap"><table class="tl-table">
+        <tbody>{% for i in step.items %}
+          <tr class="{{ 'noise' if i.noise }}">
+            <td class="tight"><input type="checkbox" name="sql" value="{{ i.sql_id }}" data-step="{{ step.index }}"></td>
+            <td class="tight small tnum muted">+{{ '%.2f'|format(i.offset) }}</td>
+            <td class="tight nowrap"><a class="mono" href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=i.sql_id, rec=i.record_id) }}">{{ i.sql_id }}</a>
+              {% if i.sql_id in linked %}<span class="badge info" title="Envanterde bir ekrana bağlı">bağlı</span>{% endif %}{% if i.noise %}<span class="badge">gürültü</span>{% endif %}</td>
+            <td class="tight small">{{ i.action or '' }}{% if i.repeat > 1 %} <span class="badge">×{{ i.repeat }}</span>{% endif %}</td>
+            <td class="tight">{% for v in i.binds[:6] %}<mark class="bv small" title="{{ loop.index }}. bind">{{ v if v is not none else 'NULL' }}</mark> {% endfor %}{% if i.binds|length > 6 %}<span class="xs muted">+{{ i.binds|length - 6 }}</span>{% endif %}</td>
+            <td class="sqlcell" title="{{ i.sql_text[:2000] }}">{{ i.sql_text }}</td>
+          </tr>
+        {% endfor %}</tbody>
+      </table></div>
+    </section>
+  {% endfor %}
+  </div>
+</form>
+{% else %}<div class="card">{{ empty('activity', 'Kayıt yok', '<span class="small">Bu yakalamada SQL kaydı bulunmuyor.</span>') }}</div>{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  var form = document.getElementById("tl-form");
+  if (!form) return;
+  var boxes = form.querySelectorAll("input[name=sql]"), cnt = document.getElementById("tl-count"), btn = document.getElementById("tl-link");
+  function upd() {
+    var ids = {};
+    boxes.forEach(function (b) { if (b.checked) ids[b.value] = 1; });
+    var n = Object.keys(ids).length; cnt.textContent = n + " SQL seçili"; btn.disabled = !n;
+  }
+  boxes.forEach(function (b) { b.addEventListener("change", upd); });
+  form.querySelectorAll("header input[data-step]").forEach(function (h) {
+    h.addEventListener("change", function () {
+      form.querySelectorAll("input[name=sql][data-step='" + h.dataset.step + "']").forEach(function (b) { b.checked = h.checked; });
+      upd();
+    });
+  });
+})();
+</script>
+{% endblock %}

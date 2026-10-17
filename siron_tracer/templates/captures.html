@@ -19,6 +19,7 @@
     <form method="post" action="{{ url_for('siron.delete_captures') }}" id="bulk">
     <div class="filters" style="background:var(--surface)">
       <span class="small muted" id="selcount">0 seçili</span>
+      <button class="btn-secondary btn-sm" id="bulkcmp" formaction="{{ url_for('siron.captures_compare') }}" formmethod="get" disabled title="Tam iki yakalama seçin">{{ icon('layers') }}Karşılaştır</button>
       <button class="btn-danger btn-sm" id="bulkdel" disabled>{{ icon('trash') }}Seçilenleri sil</button>
       <span class="spacer"></span><span class="xs muted">Silme, yakalamayı ve SQL kayıtlarını kaldırır; eşleme kararları ve rapora eklenen sonuçlar kalır.</span>
     </div>
@@ -82,7 +83,8 @@
   var boxes = form.querySelectorAll("input[name=c]"), all = document.getElementById("all"),
       cnt = document.getElementById("selcount"), del = document.getElementById("bulkdel");
   function picked() { return [].filter.call(boxes, function (b) { return b.checked; }); }
-  function upd() { var n = picked().length; cnt.textContent = n + " seçili"; del.disabled = !n; }
+  var cmp = document.getElementById("bulkcmp");
+  function upd() { var n = picked().length; cnt.textContent = n + " seçili"; del.disabled = !n; cmp.disabled = n !== 2; }
   boxes.forEach(function (b) { b.addEventListener("change", upd); });
   all.addEventListener("change", function () { boxes.forEach(function (b) { b.checked = all.checked; }); upd(); });
   del.addEventListener("click", function (e) {

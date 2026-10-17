@@ -17,6 +17,9 @@ eşleme kararlarını yönetir ve taşınacak veriyi paketler.
 |---|---|
 | Bu ekran hangi tabloları kullanıyor? | **Ekran yakalama** — Başlat → Siron'da ekranı kullan → Durdur. Birden çok DB kullanıcısı ve yakalamaya özel şema seçilebilir. Canlı akış izlenir. |
 | Gece çalışan işler ne yapıyor? | **Batch yakalama** — geçmiş zaman aralığı; yalnız batch'te görülen tablolar ayrıca raporlanır |
+| Hangi tıklama hangi SQL'i çalıştırdı? | **Zaman akışı** — yakalamadaki SQL'ler çalışma sırasıyla, duraklamalara göre **adımlara** bölünür (eşik ayarlanabilir); her adımın süresi, tabloları ve bind değerleri görünür. **Yakalama karşılaştırma** — iki yakalamada ortak ve yalnız birinde görülen tablolar, SQL kalıpları, kolonlar ("Detay" düğmesine basınca ne değişti?) |
+| Ekranda gördüğüm değer hangi sorguya gitti? | **Bind değerinde arama** — genel arama ve "Ekrandaki değeri bul", değeri audit'teki bind'lerde de arar: arama kriteri olarak girilen müşteri no'nun hangi SQL'e parametre olarak gittiği bulunur |
+| Bu ekranın verisi hangi sorgudan geliyor? | **Ekran envanterine SQL bağlama** — SQL detayından veya zaman akışında toplu seçimle bir SQL'i ekrana bağlayın ve "ne getiriyor" notu düşün; envanterde ve **ekran sayfasında** SQL_ID, yakalama adı ve yakalama tarihiyle listelenir, Excel'e de çıkar. Bindleri yerleştirilmiş SQL'de değerler **vurgulanır** ve bind satırıyla eşleşir |
 | Ekrandaki alan hangi kolondan geliyor? | **Kolon analizi** (gösterim / filtre-join / sıralama / yazma) ve **Ekrandaki değeri bul** — ekranın SQL'leri bindleriyle yeniden çalıştırılır, değer sonuçta bulunur ve `TABLO.KOLON`'a eşlenir |
 | Paket / view arkasında ne var? | **Bağımlılık analizi** (`DBA_DEPENDENCIES`) — paket veya view üzerinden erişilen tablolar "dolaylı" olarak gösterilir |
 | Tablolar nasıl bağlı? | **İlişki keşfi** — FK constraint'leri + Siron'un kendi SQL join'leri + kolon adı/tip tahmini; 0-100 güven puanı; tek tek veya toplu **veriyle doğrulama** |
@@ -79,12 +82,15 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
    sırasında **Sıfırla**'ya basın: o ana kadar yakalananlar atılır, kayıt devam eder. Gece işleri için **Geçmiş aralık / batch**.
 5. Yakalanan tabloların ne olduğunu **Araştırma** bölümünden ve tablo sayfasındaki araştırma notundan okuyun; hipotezleri
    **Doğrulama sorguları** ile kendi veritabanınızda test edin.
-6. Ekranın **Kolonlar** sekmesi ve **Ekrandaki değeri bul** ile alanları kolonlara bağlayın.
-7. **Tablolar**'da toplu karar verin, önemli tabloları **profilleyin**, tablo sayfasında kolon kararlarını,
+6. Yakalamanın **Zaman akışı** sekmesinde adımları Siron'daki tıklamalarınızla eşleştirin; ekranın verisini getiren
+   SQL'leri seçip **ekrana bağlayın** (envanterde SQL_ID, yakalama adı ve tarihiyle görünür). Ekranda gördüğünüz bir
+   numarayı genel aramaya yazarak hangi SQL'e bind olarak gittiğini bulun.
+7. Ekranın **Kolonlar** sekmesi ve **Ekrandaki değeri bul** ile alanları kolonlara bağlayın.
+8. **Tablolar**'da toplu karar verin, önemli tabloları **profilleyin**, tablo sayfasında kolon kararlarını,
    hedef alanları ve hassasiyeti girin — veya **Excel eşleme** ile analistlere dağıtın.
-8. **İlişkiler** → **Tümünü veriyle doğrula**; **ER diyagramı** ile modeli gözden geçirin.
-9. **Kapsam** sayfasında açık kalanları kapatın (yakalanmayan ekranlar, görünmeyen tablolar).
-10. **Taşıma paketi**: filtreleri girin, paketi indirin veya veriyi çıkarın. **Raporlar**'dan dokümanı üretin.
+9. **İlişkiler** → **Tümünü veriyle doğrula**; **ER diyagramı** ile modeli gözden geçirin.
+10. **Kapsam** sayfasında açık kalanları kapatın (yakalanmayan ekranlar, görünmeyen tablolar).
+11. **Taşıma paketi**: filtreleri girin, paketi indirin veya veriyi çıkarın. **Raporlar**'dan dokümanı üretin.
 
 ## Ekranlar
 
@@ -104,7 +110,10 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
 | ![Koyu tema](docs/screenshots/20_genel_bakis_koyu.png) | ![ER koyu tema](docs/screenshots/21_er_koyu.png) |
 | ![Araştırma: modüller](docs/screenshots/22_arastirma.png) | ![Araştırma: modül detayı](docs/screenshots/23_arastirma_modul.png) |
 | ![Tablo sözlüğü](docs/screenshots/24_tablo_sozlugu.png) | ![Doğrulama sorguları](docs/screenshots/25_dogrulama_sorgulari.png) |
-| ![Tablo sayfasında araştırma notu](docs/screenshots/26_tablo_arastirma_notu.png) | |
+| ![Tablo sayfasında araştırma notu](docs/screenshots/26_tablo_arastirma_notu.png) | ![Bind değerleri vurgulu SQL](docs/screenshots/27_bind_vurgulama.png) |
+| ![Zaman akışı](docs/screenshots/28_zaman_akisi.png) | ![Ekran sayfası](docs/screenshots/29_ekran_sayfasi.png) |
+| ![Envanterde bağlı SQL'ler](docs/screenshots/30_envanter_sql.png) | ![Yakalama karşılaştırma](docs/screenshots/31_karsilastirma.png) |
+| ![Bind değerinde arama](docs/screenshots/32_bind_arama.png) | |
 
 ## Araştırma bölümü
 
@@ -170,6 +179,6 @@ entegrasyon testlerini çalıştırır (`.github/workflows/ci.yml`).
 | `profiling.py`, `finder.py`, `privacy.py` | Veri profili, değer arama, hassas veri ve maskeleme |
 | `coverage.py`, `migration.py`, `excel.py` | Kapsam, taşıma paketi ve veri çıkarma, Excel gidiş-dönüş |
 | `knowledge/`, `mdrender.py` | Siron araştırması: modüller, önek aileleri, tablo ve terim sözlüğü, doğrulama sorguları, belge (Markdown) |
-| `analysis.py`, `jobs.py` | Ekran/proje analizi, arka plan işleri |
+| `analysis.py`, `jobs.py`, `timeline.py` | Ekran/proje analizi, arka plan işleri, yakalama zaman akışı (adımlar) |
 | `sources.py`, `oracle.py`, `store.py` | Audit kaynakları, Oracle erişimi, SQLite deposu |
 | `views*.py`, `templates/`, `static/` | Arayüz ve raporlar |

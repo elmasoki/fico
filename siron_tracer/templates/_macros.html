@@ -80,6 +80,7 @@
 {% macro capture_nav(capture, tab, ca=none) %}
 <div class="tabs">
   <a class="{{ 'on' if tab == 'overview' }}" href="{{ url_for('siron.capture', capture_id=capture.id) }}">{{ icon('home') }}Özet</a>
+  <a class="{{ 'on' if tab == 'timeline' }}" href="{{ url_for('siron.capture_timeline', capture_id=capture.id) }}">{{ icon('clock') }}Zaman akışı</a>
   <a class="{{ 'on' if tab == 'columns' }}" href="{{ url_for('siron.capture_columns', capture_id=capture.id) }}">{{ icon('columns') }}Kolonlar{% if ca %}<span class="n">{{ ca.columns|length }}</span>{% endif %}</a>
   <a href="{{ url_for('siron.relations', capture=capture.id) }}">{{ icon('link') }}İlişkiler</a>
   <a href="{{ url_for('siron.er', capture=capture.id) }}">{{ icon('graph') }}ER diyagramı</a>
@@ -100,7 +101,7 @@
   <datalist id="screen-names-{{ mode }}">{% for s in screens %}<option value="{{ s.name }}">{{ s.module or '' }}</option>{% endfor %}</datalist></div>
 <div class="row">
   <div class="field"><label>Envanterdeki ekran</label>
-    <select name="screen_id"><option value="">— bağlama —</option>{% for s in screens %}<option value="{{ s.id }}">{% if s.module %}{{ s.module }} › {% endif %}{{ s.name }}</option>{% endfor %}</select></div>
+    <select name="screen_id"><option value="">— bağlama —</option>{% for s in screens %}<option value="{{ s.id }}" {% if request.args.get('screen')|int(0) == s.id %}selected{% endif %}>{% if s.module %}{{ s.module }} › {% endif %}{{ s.name }}</option>{% endfor %}</select></div>
   <div class="field" style="max-width:220px"><label>Tür</label>
     <div class="segmented">{% for k, v in CAPTURE_KINDS.items() %}<label><input type="radio" name="kind" value="{{ k }}" {% if (k == 'batch') == (mode == 'batch') %}checked{% endif %}><span>{{ v.split(' ')[0] }}</span></label>{% endfor %}</div></div>
 </div>

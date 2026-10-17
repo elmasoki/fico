@@ -10,14 +10,21 @@
       <div class="tools"><form method="get"><select name="module" onchange="this.form.submit()" style="width:200px"><option value="">Tüm modüller</option>{% for m in modules %}<option {% if module == m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></form></div></div>
     {% if rows %}
     <div class="table-wrap tall"><table>
-      <thead><tr><th>Modül</th><th>Ekran</th><th>Öncelik</th><th>Durum</th><th>Yakalamalar</th><th class="tight"></th></tr></thead><tbody>
+      <thead><tr><th>Modül</th><th>Ekran</th><th>Durum</th><th>Yakalamalar</th><th>Bağlı SQL'ler</th><th class="tight"></th></tr></thead><tbody>
       {% for r in rows %}{% set s = r.s %}
       <tr>
         <td class="small">{{ s.module or '—' }}</td>
-        <td><span class="cell-title">{{ s.name }}</span>{% if s.description %}<span class="cell-sub">{{ s.description }}</span>{% endif %}</td>
-        <td class="small">{{ s.priority or '' }}</td>
+        <td><a class="cell-title" href="{{ url_for('siron.screen_page', screen_id=s.id) }}">{{ s.name }}</a>{% if s.description %}<span class="cell-sub">{{ s.description }}</span>{% endif %}{% if s.priority %}<span class="badge outline" title="Öncelik" style="margin-top:4px">{{ s.priority }}</span>{% endif %}</td>
         <td>{% set cls = {'todo':'', 'captured':'info', 'mapped':'warn', 'done':'ok', 'skip':''}[r.status] %}<span class="badge {{ cls }}">{{ SCREEN_STATUSES.get(r.status) }}</span></td>
-        <td class="small">{% for c in r.captures[:3] %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.start_local[5:16] }}</a>{% endfor %}</td>
+        <td class="small" style="min-width:190px">{% for c in r.captures[:3] %}
+          <div class="cap-line"><a href="{{ url_for('siron.capture', capture_id=c.id) }}" class="t">{{ c.name }}</a>
+            <span class="d">{{ c.start_local[:16] }}{% if c.kind == 'batch' %} · batch{% endif %}{% if c.status == 'recording' %} · kayıtta{% endif %}</span></div>
+          {% endfor %}{% if r.captures|length > 3 %}<a class="xs" href="{{ url_for('siron.screen_page', screen_id=s.id) }}">+{{ r.captures|length - 3 }} yakalama daha</a>{% endif %}</td>
+        <td class="small" style="min-width:200px">{% for l in r.links[:3] %}
+          <div class="cap-line"><a class="mono t" href="{{ url_for('siron.statement', capture_id=l.capture_id, sql_id=l.sql_id) }}">{{ l.sql_id }}</a>
+            {% if l.note %}<span class="n">{{ l.note }}</span>{% endif %}
+            <span class="d" title="Yakalama">{{ icon('record') }}{{ l.capture_name }}</span><span class="d" title="Yakalama tarihi">{{ icon('clock') }}{{ (l.capture_start or '')[:16] }}</span></div>
+          {% endfor %}{% if r.links|length > 3 %}<a class="xs" href="{{ url_for('siron.screen_page', screen_id=s.id) }}">+{{ r.links|length - 3 }} SQL daha</a>{% endif %}</td>
         <td><details style="position:relative"><summary class="btn btn-ghost btn-sm" style="list-style:none">{{ icon('edit') }}</summary>
           <div class="card" style="position:absolute;right:0;top:32px;width:340px;z-index:10;box-shadow:var(--shadow-lg)"><form class="card-body" method="post">
             <input type="hidden" name="action" value="update"><input type="hidden" name="id" value="{{ s.id }}">
