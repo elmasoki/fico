@@ -329,9 +329,27 @@ def update_capture(capture_id):
 
 @bp.post("/captures/<int:capture_id>/delete")
 def delete_capture(capture_id):
-    ctx()[2].delete_capture(capture_id)
-    flash("Yakalama silindi.", "ok")
+    store = ctx()[2]
+    capture = store.get_capture(capture_id)
+    if capture:
+        store.delete_capture(capture_id)
+        log("capture_delete", "%s (%d kayıt)" % (capture["name"], capture["record_count"] or 0))
+        flash("Yakalama silindi: %s" % capture["name"], "ok")
     return redirect(url_for(".captures"))
+
+
+@bp.post("/captures/delete")
+def delete_captures():
+    store = ctx()[2]
+    ids = request.form.getlist("c", type=int)
+    found = [c for c in (store.get_capture(i) for i in ids) if c]
+    if not found:
+        flash("Önce yakalama seçin.", "error")
+        return redirect(request.referrer or url_for(".captures"))
+    store.delete_captures([c["id"] for c in found])
+    log("capture_delete", ", ".join(c["name"] for c in found)[:500])
+    flash("%d yakalama silindi." % len(found), "ok")
+    return redirect(request.referrer or url_for(".captures"))
 
 
 # --------------------------------------------------------------------------- value finder

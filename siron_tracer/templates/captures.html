@@ -16,12 +16,19 @@
       </div>
     </div>
     {% if captures %}
+    <form method="post" action="{{ url_for('siron.delete_captures') }}" id="bulk">
+    <div class="filters" style="background:var(--surface)">
+      <span class="small muted" id="selcount">0 seçili</span>
+      <button class="btn-danger btn-sm" id="bulkdel" disabled>{{ icon('trash') }}Seçilenleri sil</button>
+      <span class="spacer"></span><span class="xs muted">Silme, yakalamayı ve SQL kayıtlarını kaldırır; eşleme kararları ve rapora eklenen sonuçlar kalır.</span>
+    </div>
     <div class="table-wrap tall">
     <table>
-      <thead><tr><th>Ekran / işlem</th><th>Durum</th><th>Zaman (DB)</th><th>Kullanıcı / şema</th><th class="num">Kayıt</th></tr></thead>
+      <thead><tr><th class="tight"><input type="checkbox" id="all" title="Hepsini seç"></th><th>Ekran / işlem</th><th>Durum</th><th>Zaman (DB)</th><th>Kullanıcı / şema</th><th class="num">Kayıt</th><th class="tight"></th></tr></thead>
       <tbody>
       {% for c in captures %}
       <tr>
+        <td><input type="checkbox" name="c" value="{{ c.id }}" data-name="{{ c.name }}"></td>
         <td><a class="cell-title" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>
           <span class="cell-sub">{% if c.screen_id and screens_by_id.get(c.screen_id) %}{{ icon('list') }} {{ screens_by_id[c.screen_id].module or '' }}{% endif %}{% if c.notes %} {{ c.notes }}{% endif %}</span></td>
         <td class="nowrap">{% if c.status == 'recording' %}<span class="badge rec"><span class="dot"></span>Kayıtta</span>{% else %}<span class="badge ok">Tamam</span>{% endif %}
@@ -29,11 +36,14 @@
         <td class="nowrap small">{{ c.start_local[:16] }}<span class="cell-sub">→ {{ (c.end_local or '')[11:16] or 'devam ediyor' }}</span></td>
         <td class="small">{{ c.db_users|join(', ') }}<span class="cell-sub">{{ c.schema_name or settings.current_schema }} · {{ c.source }}</span></td>
         <td class="num">{{ c.record_count|thousands }}</td>
+        <td><button class="btn-ghost btn-sm" title="Sil" formaction="{{ url_for('siron.delete_capture', capture_id=c.id) }}"
+              data-confirm="&quot;{{ c.name }}&quot; yakalaması ve {{ c.record_count|thousands }} SQL kaydı silinsin mi?">{{ icon('trash') }}</button></td>
       </tr>
       {% endfor %}
       </tbody>
     </table>
     </div>
+    </form>
     {% else %}{{ empty('record', 'Yakalama yok', '<span class="small">Sağdaki formla ilk ekranınızı yakalayın.</span>') }}{% endif %}
   </div>
 
@@ -66,6 +76,24 @@
 {% endblock %}
 {% block scripts %}
 <script>
+(function () {
+  var form = document.getElementById("bulk");
+  if (!form) return;
+  var boxes = form.querySelectorAll("input[name=c]"), all = document.getElementById("all"),
+      cnt = document.getElementById("selcount"), del = document.getElementById("bulkdel");
+  function picked() { return [].filter.call(boxes, function (b) { return b.checked; }); }
+  function upd() { var n = picked().length; cnt.textContent = n + " seçili"; del.disabled = !n; }
+  boxes.forEach(function (b) { b.addEventListener("change", upd); });
+  all.addEventListener("change", function () { boxes.forEach(function (b) { b.checked = all.checked; }); upd(); });
+  del.addEventListener("click", function (e) {
+    var p = picked(), names = p.slice(0, 5).map(function (b) { return "• " + b.dataset.name; }).join("\n");
+    if (p.length > 5) names += "\n… ve " + (p.length - 5) + " yakalama daha";
+    if (!confirm(p.length + " yakalama ve SQL kayıtları silinsin mi?\n\n" + names)) e.preventDefault();
+  });
+  form.querySelectorAll("[data-confirm]").forEach(function (b) {
+    b.addEventListener("click", function (e) { if (!confirm(b.dataset.confirm)) e.preventDefault(); });
+  });
+})();
 document.querySelectorAll("[data-pane]").forEach(function (a) {
   a.addEventListener("click", function (e) {
     e.preventDefault();

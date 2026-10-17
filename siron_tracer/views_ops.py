@@ -70,7 +70,8 @@ ACTIONS = {"query": "Sorgu çalıştırma", "export_csv": "CSV dışa aktarma", 
            "export_xlsx": "Excel dışa aktarma", "import_xlsx": "Excel içe aktarma", "report": "Rapor",
            "snapshot": "Rapora ekleme", "export_zip": "Taşıma paketi", "extract": "Veri çıkarma",
            "catalog": "Veri sözlüğü", "profile": "Veri profili", "relcheck": "İlişki doğrulama",
-           "search": "Değer arama", "export_er": "ER dışa aktarma", "settings": "Ayarlar"}
+           "search": "Değer arama", "export_er": "ER dışa aktarma", "settings": "Ayarlar",
+           "capture_delete": "Yakalama silme"}
 
 
 # --------------------------------------------------------------------------- settings

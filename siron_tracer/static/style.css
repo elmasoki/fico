@@ -199,6 +199,7 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-bottom-width
 .btn-ghost:hover { background: var(--hover); color: var(--ink); }
 .btn-danger { background: var(--surface); color: var(--err); border-color: var(--line-strong); }
 .btn-danger:hover { background: var(--err-soft); border-color: var(--err); }
+button:disabled, .btn:disabled { opacity: .45; cursor: not-allowed; pointer-events: none; }
 .btn-rec { background: #d92d20; color: #fff; }
 .btn-rec:hover { background: #b42318; }
 .btn-sm { height: 28px; padding: 0 10px; font-size: 12.5px; border-radius: 7px; gap: 5px; }

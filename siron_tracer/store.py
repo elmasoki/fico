@@ -209,11 +209,19 @@ class Store:
             self._bump()
 
     def delete_capture(self, capture_id: int):
+        self.delete_captures([capture_id])
+
+    def delete_captures(self, capture_ids: Iterable[int]) -> int:
+        """Delete captures with their records; saved result snapshots are kept (unlinked)."""
+        ids = [(int(i),) for i in capture_ids]
+        if not ids:
+            return 0
         with self._lock, self._conn() as db:
-            db.execute("DELETE FROM records WHERE capture_id = ?", (capture_id,))
-            db.execute("DELETE FROM captures WHERE id = ?", (capture_id,))
-            db.execute("UPDATE snapshots SET capture_id = NULL WHERE capture_id = ?", (capture_id,))
+            db.executemany("DELETE FROM records WHERE capture_id = ?", ids)
+            db.executemany("UPDATE snapshots SET capture_id = NULL WHERE capture_id = ?", ids)
+            deleted = sum(db.execute("DELETE FROM captures WHERE id = ?", i).rowcount for i in ids)
             self._bump()
+        return deleted
 
     # ------------------------------------------------------------------ records
     def replace_records(self, capture_id: int, records: Iterable[dict]):

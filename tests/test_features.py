@@ -192,6 +192,27 @@ def test_activity_log_settings_and_check(env):
     assert "A_USER" in client.get("/settings").get_data(as_text=True)
 
 
+def test_delete_captures(env):
+    client, oracle, store, _ = env
+    a = capture(client, store, oracle, [rec(1, Q1, " #1(1):1")], name="Ekran A")
+    b = capture(client, store, oracle, [rec(2, Q2, None)], name="Ekran B")
+    c = capture(client, store, oracle, [rec(3, Q1, " #1(1):2")], name="Ekran C")
+    store.save_annotation("SIRON", "CUSTOMERS", "", status="migrate")
+    html = client.get("/captures").get_data(as_text=True)
+    assert "Seçilenleri sil" in html and "/captures/%d/delete" % a in html
+
+    client.post("/captures/%d/delete" % a)                          # single, from the list row
+    assert store.get_capture(a) is None and store.records(a) == []
+    client.post("/captures/delete", data={"c": [str(b), str(c), "9999"]})   # bulk; unknown ids ignored
+    assert store.list_captures() == [] and store.records(b) == []
+    assert store.annotations()[("SIRON", "CUSTOMERS", "")]["status"] == "migrate"   # decisions survive
+    deletes = [x["detail"] for x in store.activity() if x["action"] == "capture_delete"]
+    assert any("Ekran A" in d for d in deletes) and any("Ekran B" in d and "Ekran C" in d for d in deletes)
+    assert "Yakalama silme" in client.get("/activity").get_data(as_text=True)
+    resp = client.post("/captures/delete", data={})
+    assert resp.status_code == 302 and store.list_captures() == []
+
+
 def test_csrf_protection(env):
     client, oracle, store, app = env
     app.config["TESTING"] = False
