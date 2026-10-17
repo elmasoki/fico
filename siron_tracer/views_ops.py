@@ -71,7 +71,7 @@ ACTIONS = {"query": "Sorgu çalıştırma", "export_csv": "CSV dışa aktarma", 
            "snapshot": "Rapora ekleme", "export_zip": "Taşıma paketi", "extract": "Veri çıkarma",
            "catalog": "Veri sözlüğü", "profile": "Veri profili", "relcheck": "İlişki doğrulama",
            "search": "Değer arama", "export_er": "ER dışa aktarma", "settings": "Ayarlar",
-           "capture_delete": "Yakalama silme"}
+           "capture_delete": "Yakalama silme", "capture_reset": "Yakalama sıfırlama"}
 
 
 # --------------------------------------------------------------------------- settings

@@ -276,10 +276,30 @@ def capture_live(capture_id):
         return jsonify({"error": str(exc)})
     with_sql = [r for r in rows if r.get("sql_text")]
     return jsonify({
+        "elapsed": max(0, int((now_utc - parse_ts(capture["start_utc"])).total_seconds())),
         "count": len(rows), "capped": len(rows) >= 500, "statements": len({r["sql_id"] for r in with_sql}),
         "last": [{"ts": r["ts"][11:19], "user": r.get("db_user"), "action": r["action"],
                   "sql": (r["sql_text"] or "")[:180]} for r in with_sql[-20:]][::-1],
     })
+
+
+@bp.post("/captures/<int:capture_id>/reset")
+def reset_capture(capture_id):
+    """Forget everything captured so far and keep recording from the current DB time."""
+    _, oracle, store = ctx()
+    capture = capture_or_404(capture_id)
+    if capture["status"] != "recording":
+        flash("Yalnız devam eden bir yakalama sıfırlanabilir.", "error")
+        return redirect(url_for(".capture", capture_id=capture_id))
+    try:
+        now_utc, now_local = oracle.now()
+    except Exception as exc:
+        flash("Oracle'a bağlanılamadı: %s" % exc, "error")
+        return redirect(url_for(".capture", capture_id=capture_id))
+    store.reset_capture(capture_id, now_utc, now_local)
+    log("capture_reset", "%s: %s öncesi atıldı" % (capture["name"], now_local.strftime("%H:%M:%S")))
+    flash("Sıfırlandı. %s öncesindeki SQL'ler atıldı, kayıt devam ediyor." % now_local.strftime("%H:%M:%S"), "ok")
+    return redirect(url_for(".capture", capture_id=capture_id))
 
 
 @bp.post("/captures/<int:capture_id>/stop")

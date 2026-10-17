@@ -74,7 +74,8 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
 2. **Ekran envanteri**'ne Siron ekranlarını toplu girin (`Modül > Ekran`, Excel'den yapıştırılabilir).
 3. Siron'da hiçbir şey yapmadan kısa bir yakalama alıp **Gürültü olarak işaretleyin**. Hatalı veya deneme yakalamalarını
    listeden tek tek ya da toplu silebilirsiniz (eşleme kararları silinmez).
-4. Her ekran için yakalama alın (envanterden seçerek). Gece işleri için **Geçmiş aralık / batch**.
+4. Her ekran için yakalama alın (envanterden seçerek). Ekrana gelene kadar başka yerlerde gezindiyseniz kayıt
+   sırasında **Sıfırla**'ya basın: o ana kadar yakalananlar atılır, kayıt devam eder. Gece işleri için **Geçmiş aralık / batch**.
 5. Ekranın **Kolonlar** sekmesi ve **Ekrandaki değeri bul** ile alanları kolonlara bağlayın.
 6. **Tablolar**'da toplu karar verin, önemli tabloları **profilleyin**, tablo sayfasında kolon kararlarını,
    hedef alanları ve hassasiyeti girin — veya **Excel eşleme** ile analistlere dağıtın.

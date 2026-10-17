@@ -3,9 +3,12 @@
 {% block page_title %}{{ capture.name }}{% endblock %}
 {% block crumbs %}{{ capture_crumbs(capture) }}{% endblock %}
 {% block eyebrow %}<div class="eyebrow"><span class="pulse-dot"></span>Kayıt sürüyor</div>{% endblock %}
-{% block subtitle %}<p class="sub">Şimdi Siron'da ekranı açın ve işlemi yapın. Bittiğinde <b>Durdur</b>'a basın; bu aralıktaki tüm SQL'ler analiz edilir.</p>{% endblock %}
+{% block subtitle %}<p class="sub">Şimdi Siron'da ekranı açın ve işlemi yapın. Bittiğinde <b>Durdur</b>'a basın; bu aralıktaki tüm SQL'ler analiz edilir. Ekrana gelmeden önceki gezinmeleri atmak için <b>Sıfırla</b>: o ana kadar yakalananlar silinir, kayıt devam eder.</p>{% endblock %}
 {% block actions %}
   <form method="post" action="{{ url_for('siron.delete_capture', capture_id=capture.id) }}" class="inline"><button class="btn-secondary">{{ icon('x') }}İptal</button></form>
+  <form method="post" action="{{ url_for('siron.reset_capture', capture_id=capture.id) }}" class="inline"
+        onsubmit="return confirm('Şu ana kadar yakalanan SQL\'ler atılsın ve kayıt şimdiden yeniden başlasın mı?')">
+    <button class="btn-secondary" title="Şu ana kadar yakalananları at, kayda devam et" data-busy="Sıfırlanıyor">{{ icon('refresh') }}Sıfırla</button></form>
   <form method="post" action="{{ url_for('siron.stop_capture', capture_id=capture.id) }}" class="inline"><button class="btn-rec btn-lg" data-busy="Kayıtlar alınıyor">{{ icon('stop') }}Durdur ve analiz et</button></form>
 {% endblock %}
 {% block content %}
@@ -29,6 +32,7 @@
     fetch("{{ url_for('siron.capture_live', capture_id=capture.id) }}").then(function (r) { return r.json(); }).then(function (d) {
       var st = document.getElementById("status");
       if (d.error) { st.textContent = "hata: " + d.error; st.className = "k-sub err"; return; }
+      if (typeof d.elapsed === "number") started = Date.now() - d.elapsed * 1000;
       document.getElementById("count").textContent = d.count + (d.capped ? "+" : "");
       document.getElementById("stmts").textContent = d.statements;
       st.textContent = d.count ? "audit'e yazılıyor" : "henüz kayıt yok"; st.className = "k-sub";

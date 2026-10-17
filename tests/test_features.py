@@ -213,6 +213,32 @@ def test_delete_captures(env):
     assert resp.status_code == 302 and store.list_captures() == []
 
 
+def test_reset_running_capture(env):
+    client, oracle, store, _ = env
+    oracle.records = [rec(1, Q1, " #1(1):1")]
+    client.post("/captures", data={"name": "Müşteri detay"})
+    cid = store.list_captures()[0]["id"]
+    first = store.get_capture(cid)
+    page = client.get("/captures/%d" % cid).get_data(as_text=True)
+    assert "/captures/%d/reset" % cid in page and "Sıfırla" in page
+
+    client.post("/captures/%d/reset" % cid)
+    after = store.get_capture(cid)
+    assert after["status"] == "recording"                           # still recording
+    assert after["start_utc"] > first["start_utc"] and after["start_local"] > first["start_local"]
+    live = client.get("/captures/%d/live" % cid).get_json()
+    assert oracle.last_filter.start_utc.strftime("%Y-%m-%d %H:%M:%S.%f") == after["start_utc"]
+    assert live["elapsed"] == 60                                    # FakeOracle clock ticks a minute per call
+    assert any(a["action"] == "capture_reset" for a in store.activity())
+
+    client.post("/captures/%d/stop" % cid)                          # stop fetches only the new window
+    assert oracle.last_filter.start_utc.strftime("%Y-%m-%d %H:%M:%S.%f") == after["start_utc"]
+    assert store.get_capture(cid)["status"] == "done"
+    client.post("/captures/%d/reset" % cid)                         # finished captures cannot be reset
+    assert store.get_capture(cid)["start_utc"] == after["start_utc"]
+    assert store.get_capture(cid)["record_count"] == 1
+
+
 def test_csrf_protection(env):
     client, oracle, store, app = env
     app.config["TESTING"] = False

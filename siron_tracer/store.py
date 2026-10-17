@@ -198,6 +198,14 @@ class Store:
                        (fmt_ts(end_utc), fmt_ts(end_local), capture_id))
             self._bump()
 
+    def reset_capture(self, capture_id: int, start_utc: datetime, start_local: datetime):
+        """Restart a running capture's window at the given time, dropping anything captured before it."""
+        with self._lock, self._conn() as db:
+            db.execute("DELETE FROM records WHERE capture_id = ?", (capture_id,))
+            db.execute("UPDATE captures SET start_utc = ?, start_local = ?, record_count = 0 WHERE id = ?",
+                       (fmt_ts(start_utc), fmt_ts(start_local), capture_id))
+            self._bump()
+
     def update_capture(self, capture_id: int, **fields):
         allowed = {"name", "notes", "is_noise", "message", "kind", "screen_id", "schema_name"}
         cols = [k for k in fields if k in allowed]

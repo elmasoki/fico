@@ -56,3 +56,36 @@ def test_capture_to_extract(settings, audit_policy, tmp_path):
     rows = {f["table"]: f["rows"] for f in job["result"]["files"]}
     assert rows == {"SIRON.CUSTOMER": 200, "SIRON.ACCOUNT": 400}
     assert client.get("/report.html").status_code == 200
+
+
+def test_reset_drops_earlier_sql(settings, audit_policy, tmp_path):
+    settings.sqlite_path = str(tmp_path / "reset.db")
+    app = create_app(settings, sync_jobs=True)
+    app.config["TESTING"] = True
+    store = app.extensions["siron"]["store"]
+    client = app.test_client()
+
+    def run(sql):
+        conn = oracledb.connect(user="siron", password=APP_PW, dsn=DSN)
+        cur = conn.cursor()
+        cur.execute(sql)
+        cur.fetchall()
+        conn.close()
+
+    client.post("/captures", data={"name": "Reset", "db_users": ["SIRON"], "schema": "SIRON"})
+    cid = store.list_captures()[0]["id"]
+    time.sleep(1)
+    run("SELECT country_name FROM country WHERE country_code = 'TR'")      # navigation before the screen
+    time.sleep(1.5)
+    assert client.get("/captures/%d/live" % cid).get_json()["count"] >= 1
+    client.post("/captures/%d/reset" % cid)
+    assert client.get("/captures/%d/live" % cid).get_json()["count"] == 0
+    time.sleep(1)
+    run("SELECT status, score FROM alert WHERE alert_id = 1")
+    time.sleep(1.5)
+    client.post("/captures/%d/stop" % cid)
+
+    texts = " ".join(r["sql_text"] or "" for r in store.records(cid))
+    assert "alert" in texts and "country" not in texts
+    html = client.get("/captures/%d" % cid).get_data(as_text=True)
+    assert "SIRON.ALERT" in html and "SIRON.COUNTRY" not in html
