@@ -3,10 +3,20 @@
 {% block content %}
 <form method="post" class="card">
   <h1>SQL çalıştır</h1>
-  <p class="small muted">Yalnızca SELECT / WITH. Şema: <b>{{ settings.current_schema }}</b>, salt-okunur, en fazla {{ settings.max_result_rows }} satır.</p>
+  <p class="small muted">Yalnızca SELECT / WITH. Şema: <b>{{ settings.current_schema }}</b>, salt-okunur; ekranda en fazla {{ settings.max_result_rows }} satır.</p>
   <textarea class="sql" name="sql">{{ sql }}</textarea>
-  <button>Çalıştır</button>
+  <div class="toolbar">
+    <button name="do" value="run">Çalıştır</button>
+    <button name="do" value="csv" class="secondary">Tüm sonucu CSV indir</button>
+    <button name="do" value="html" class="secondary">Sonucu HTML indir</button>
+    <label style="margin:0 0 9px"><input type="checkbox" name="mask" value="1"> HTML'de veriyi maskele</label>
+  </div>
+  <details style="margin-top:10px"><summary class="small">Rapora ekle</summary>
+    <div class="row"><div><label>Başlık</label><input type="text" name="title" value="Sorgu"></div>
+      <div><label>Not</label><input type="text" name="note"></div></div>
+    <button name="do" value="snapshot" class="secondary">Çalıştır ve sonucu rapora ekle</button>
+  </details>
 </form>
 {% if error %}<div class="card"><p class="err">{{ error }}</p></div>{% endif %}
-{% if result %}<div class="card">{{ results_table(result) }}</div>{% endif %}
+{% if result %}<div class="card">{{ results_table(result, sources) }}</div>{% endif %}
 {% endblock %}

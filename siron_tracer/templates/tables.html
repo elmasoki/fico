@@ -1,14 +1,32 @@
 {% extends "base.html" %}
+{% from "_macros.html" import table_link, status_badge with context %}
 {% block content %}
-<h1>Tablo haritası</h1>
-<p class="small muted">Tamamlanmış ve gürültü olmayan tüm yakalamalarda hangi nesnenin hangi ekranda kullanıldığı.
-  <a href="{{ url_for('siron.tables_csv') }}">CSV indir</a></p>
+<h1>Tablolar</h1>
+<form class="card toolbar" method="get">
+  <div style="flex:2"><label>Ara (ad veya açıklama)</label><input type="text" name="q" value="{{ q }}"></div>
+  <div><label>Durum</label><select name="status"><option value="">Hepsi</option>
+    {% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}
+    <option value="none" {% if status == 'none' %}selected{% endif %}>İşaretlenmemiş</option></select></div>
+  <div><label>Kapsam</label><select name="all"><option value="0">Ekranlarda kullanılanlar</option>
+    <option value="1" {% if show_all %}selected{% endif %} {% if not has_catalog %}disabled{% endif %}>Şemadaki tüm tablolar</option></select></div>
+  <button>Filtrele</button>
+</form>
+<p class="small muted">{{ rows|length }} tablo · {{ capture_count }} ekran yakalaması üzerinden.
+  "Kullanılan kolon": ekranların SQL'lerinde geçen kolon sayısı / tablodaki toplam kolon.</p>
+<div class="scroll">
 <table>
-  <tr><th>Nesne</th><th>Tip</th><th>İşlemler</th><th>Ekranlar (SQL sayısı / çalışma)</th></tr>
-  {% for label, e in usage %}
-  <tr><td><b>{{ label }}</b></td><td>{{ e.type or '' }}</td>
-    <td>{% for a in e.actions|sort %}<span class="badge">{{ a }}</span>{% endfor %}</td>
-    <td>{% for c, ns, ne in e.screens %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }} ({{ ns }}/{{ ne }})</a>{% endfor %}</td></tr>
-  {% else %}<tr><td colspan="4" class="muted">Henüz veri yok.</td></tr>{% endfor %}
+  <tr><th>Tablo</th><th>Tip</th><th class="right">Satır</th><th>Açıklama</th><th>Ekranlar</th><th>İşlemler</th><th class="right">Kullanılan kolon</th><th class="right">İlişki</th><th>Durum</th><th>Not</th></tr>
+  {% for r in rows %}
+  <tr><td class="nowrap"><b>{{ table_link(r.key) }}</b></td>
+    <td class="small">{{ r.table.obj_type if r.table else '?' }}</td>
+    <td class="right small">{{ r.table.num_rows|thousands if r.table else '' }}</td>
+    <td class="small">{{ (r.table.comment or '')[:120] if r.table else '' }}</td>
+    <td class="small">{% for c, t in r.screens %}<a class="badge" href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a>{% endfor %}</td>
+    <td>{% for a in r.actions|sort %}<span class="badge">{{ a }}</span>{% endfor %}</td>
+    <td class="right">{{ r.used or '' }}{% if r.total %} / {{ r.total }}{% endif %}</td>
+    <td class="right">{{ r.relations or '' }}</td>
+    <td>{{ status_badge(r.ann.status) }}</td><td class="small">{{ r.ann.note or '' }}</td></tr>
+  {% else %}<tr><td colspan="10" class="muted">Tablo yok.</td></tr>{% endfor %}
 </table>
+</div>
 {% endblock %}

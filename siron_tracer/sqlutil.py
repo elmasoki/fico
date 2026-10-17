@@ -296,48 +296,69 @@ def _tokens(sql: str):
             yield "other", m.group("other")
 
 
-def _heuristic_tables(sql: str) -> List[ObjectKey]:
-    toks = list(_tokens(sql))
-    found: List[ObjectKey] = []
-    parens: List[str] = []  # identifier before each open parenthesis
+_FROM_END = {"WHERE", "GROUP", "ORDER", "HAVING", "CONNECT", "START", "UNION", "MINUS", "INTERSECT",
+             "EXCEPT", "FETCH", "FOR", "MODEL", "WINDOW", "RETURNING", "SET", "VALUES", "SELECT"}
+
+
+def table_refs(toks) -> List[Tuple[Optional[str], str, Optional[str]]]:
+    """(owner, name, alias) for every table reference after FROM/JOIN/INTO/UPDATE/USING,
+    including comma separated lists (also after an ANSI join's ON condition)."""
+    found: List[Tuple[Optional[str], str, Optional[str]]] = []
+    parens: List[str] = []      # identifier before each open parenthesis
+    in_from = {0: False}        # paren depth -> inside a FROM clause
+
+    def parse(j: int, word: str) -> int:
+        """Parse 'table [AS] alias' at j; returns the index after it."""
+        k, t = toks[j]
+        if k != "ident" or t.upper() in _NOT_ALIAS:
+            return j
+        parts = _split_ident(t)
+        ref = None
+        if parts[-1] not in _SKIP_NAMES and t.upper() not in _TABLE_KW:
+            if word != "INTO" and j + 1 < len(toks) and toks[j + 1] == ("punct", "("):
+                return j  # table function such as TABLE(...)
+            ref = [parts[-2] if len(parts) > 1 else None, parts[-1], None]
+            found.append(ref)
+        j += 1
+        if j < len(toks) and toks[j][0] == "ident" and toks[j][1].upper() == "AS":
+            j += 1
+        if j < len(toks) and toks[j][0] == "ident" and toks[j][1].upper() not in _NOT_ALIAS:
+            if ref is not None and "." not in toks[j][1]:
+                ref[2] = _split_ident(toks[j][1])[0]
+            j += 1
+        return j
+
     i = 0
     while i < len(toks):
         kind, text = toks[i]
         word = text.upper() if kind == "ident" else ""
+        depth = len(parens)
         if (kind, text) == ("punct", "("):
             prev = toks[i - 1] if i else ("", "")
             parens.append(prev[1].upper() if prev[0] == "ident" else "")
-        elif (kind, text) == ("punct", ")") and parens:
-            parens.pop()
+            in_from[len(parens)] = False
+        elif (kind, text) == ("punct", ")"):
+            if parens:
+                in_from.pop(len(parens), None)
+                parens.pop()
         elif word == "FROM" and parens and parens[-1] in _FROM_FUNCS:
             pass
-        elif word in _TABLE_KW:
-            multi = word == "FROM"
-            j = i + 1
-            while j < len(toks):
-                k, t = toks[j]
-                if k != "ident" or t.upper() in _NOT_ALIAS:
-                    break
-                parts = _split_ident(t)
-                if parts[-1] not in _SKIP_NAMES and t.upper() not in _TABLE_KW:
-                    if word != "INTO" and j + 1 < len(toks) and toks[j + 1] == ("punct", "("):
-                        break  # table function such as TABLE(...)
-                    found.append((parts[-2] if len(parts) > 1 else None, parts[-1]))
-                j += 1
-                # optional alias, with or without AS
-                if j < len(toks) and toks[j][0] == "ident" and toks[j][1].upper() == "AS":
-                    j += 1
-                if (j < len(toks) and toks[j][0] == "ident"
-                        and toks[j][1].upper() not in _NOT_ALIAS):
-                    j += 1
-                if multi and j < len(toks) and toks[j] == ("punct", ","):
-                    j += 1
-                    continue
-                break
+        elif word in _FROM_END:
+            in_from[depth] = False
+        elif word in _TABLE_KW or ((kind, text) == ("punct", ",") and in_from.get(depth)):
+            if word == "FROM":
+                in_from[depth] = True
+            j = parse(i + 1, word)
+            while word == "FROM" and j < len(toks) and toks[j] == ("punct", ","):
+                j = parse(j + 1, word)
             i = max(j, i + 1)
             continue
         i += 1
-    return found
+    return [tuple(r) for r in found]
+
+
+def _heuristic_tables(sql: str) -> List[ObjectKey]:
+    return [(owner, name) for owner, name, _ in table_refs(list(_tokens(sql)))]
 
 
 def extract_tables(sql: str, known_objects: Optional[Set[ObjectKey]] = None,
@@ -377,3 +398,51 @@ def extract_tables(sql: str, known_objects: Optional[Set[ObjectKey]] = None,
                 add((owner, parts[0]))
         prev = (kind, text)
     return result
+
+
+# --------------------------------------------------------------------------- formatting
+
+_NEWLINE_BEFORE = [
+    "UNION ALL", "UNION", "MINUS", "INTERSECT", "SELECT", "FROM", "WHERE", "GROUP BY",
+    "ORDER BY", "HAVING", "CONNECT BY", "START WITH", "LEFT OUTER JOIN", "RIGHT OUTER JOIN",
+    "FULL OUTER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "INNER JOIN", "CROSS JOIN",
+    "JOIN", "AND", "OR", "SET", "VALUES", "FETCH FIRST", "OFFSET", "RETURNING",
+]
+_KW_RE = re.compile(r"\b(%s)\b" % "|".join(k.replace(" ", r"\s+") for k in _NEWLINE_BEFORE), re.I)
+
+
+def format_sql(sql: str, indent: str = "  ") -> str:
+    """Readable layout: major clauses on new lines, indented by parenthesis depth.
+    Strings, quoted identifiers and comments are left untouched."""
+    out: List[str] = []
+    depth = 0
+    between = False  # inside BETWEEN x AND y
+    for kind, s, e in _scan(sql):
+        chunk = sql[s:e]
+        if kind != "code":
+            out.append(chunk)
+            continue
+        pos = 0
+        for m in re.finditer(r"\(|\)|\bBETWEEN\b|" + _KW_RE.pattern, chunk, re.I):
+            out.append(re.sub(r"\s+", " ", chunk[pos:m.start()]))
+            tok = m.group(0)
+            upper = re.sub(r"\s+", " ", tok.upper())
+            if tok == "(":
+                depth += 1
+                out.append(tok)
+            elif tok == ")":
+                depth = max(depth - 1, 0)
+                out.append(tok)
+            elif upper == "BETWEEN":
+                between = True
+                out.append(tok)
+            elif upper == "AND" and between:
+                between = False
+                out.append(tok)
+            else:
+                text = "".join(out).rstrip(" ")
+                extra = indent if upper in ("AND", "OR") else ""
+                out = [text, "\n" + indent * depth + extra if text else "", upper]
+            pos = m.end()
+        out.append(re.sub(r"\s+", " ", chunk[pos:]))
+    return "".join(out).strip()

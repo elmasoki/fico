@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Raporlar</h1>
+<form class="card" method="get" action="{{ url_for('siron.report') }}" target="_blank">
+  <p class="small muted">Rapor tek bir HTML dosyasıdır (dış bağlantı yok); tarayıcıda açılır, yazdırılabilir / PDF'e çevrilebilir, e-postayla paylaşılabilir.
+    İçerik: ekran envanteri, tablo ve kolon kullanımı, veri sözlüğü, notlar, kolon eşleme matrisi, ilişkiler ve ER diyagramı, SQL'ler ve rapora eklenen sonuçlar.</p>
+  <label>Kapsam</label>
+  <select name="capture"><option value="">Tüm ekranlar (proje raporu)</option>
+    {% for c in captures %}<option value="{{ c.id }}">Ekran: {{ c.name }}</option>{% endfor %}</select>
+  <label>Kolonlar</label>
+  <select name="cols"><option value="used">Sadece kullanılan / not eklenmiş kolonlar</option><option value="all">Tablonun tüm kolonları (veri sözlüğü)</option></select>
+  <label><input type="checkbox" name="sql" value="1" checked> SQL'leri ekle (bindleri yerleştirilmiş haliyle)</label>
+  <label><input type="checkbox" name="snapshots" value="1" checked> Rapora eklenen sorgu sonuçlarını ekle
+    (<a href="{{ url_for('siron.snapshots') }}">listeyi gör</a>)</label>
+  <label><input type="checkbox" name="mask" value="1"> Sonuç verilerini maskele (kişisel veri paylaşılacaksa önerilir)</label>
+  <input type="hidden" name="sql" value="0"><input type="hidden" name="snapshots" value="0">
+  <div class="toolbar"><button>Raporu aç</button><button name="download" value="1" class="secondary">HTML olarak indir</button></div>
+</form>
+{% endblock %}

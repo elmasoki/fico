@@ -28,6 +28,10 @@ class Settings:
     max_result_rows: int = 500
     query_timeout_sec: int = 60
     flush_unified_on_stop: bool = True
+    snapshot_rows: int = 50            # rows kept when a result is added to the report
+    finder_rows: int = 500             # rows scanned per statement by the value finder
+    big_table_rows: int = 2000000      # value search skips larger tables unless asked
+    max_export_rows: int = 1000000     # full CSV export limit
     nls_date_format: Optional[str] = None
     nls_timestamp_format: Optional[str] = None
 
@@ -81,6 +85,10 @@ def load_settings(path: Optional[str] = None) -> Settings:
     s.max_audit_rows = int(_get(cp, "app", "max_audit_rows", "SIRON_MAX_AUDIT_ROWS", 20000))
     s.max_result_rows = int(_get(cp, "app", "max_result_rows", "SIRON_MAX_RESULT_ROWS", 500))
     s.query_timeout_sec = int(_get(cp, "app", "query_timeout_sec", "SIRON_QUERY_TIMEOUT", 60))
+    s.snapshot_rows = int(_get(cp, "app", "snapshot_rows", "SIRON_SNAPSHOT_ROWS", 50))
+    s.finder_rows = int(_get(cp, "app", "finder_rows", "SIRON_FINDER_ROWS", 500))
+    s.big_table_rows = int(_get(cp, "app", "big_table_rows", "SIRON_BIG_TABLE_ROWS", 2000000))
+    s.max_export_rows = int(_get(cp, "app", "max_export_rows", "SIRON_MAX_EXPORT_ROWS", 1000000))
     s.flush_unified_on_stop = str(_get(cp, "app", "flush_unified_on_stop", "SIRON_FLUSH", "true")).lower() in ("1", "true", "yes", "evet")
     s.nls_date_format = _get(cp, "app", "nls_date_format", "SIRON_NLS_DATE_FORMAT")
     s.nls_timestamp_format = _get(cp, "app", "nls_timestamp_format", "SIRON_NLS_TIMESTAMP_FORMAT")

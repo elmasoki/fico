@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_macros.html" import results_table %}
+{% block content %}
+<h1>Rapora eklenen sonuçlar ({{ snapshots|length }})</h1>
+<p class="small muted">SQL veya ekran sayfasında "Çalıştır ve sonucu rapora ekle" ile kaydedilen sonuçlar; HTML raporlarda yer alır.
+  <a href="{{ url_for('siron.report_options') }}">Rapor oluştur</a></p>
+{% for s in snapshots %}
+<div class="card">
+  <h2 style="margin-top:0">{{ s.title }}</h2>
+  <p class="small muted">{{ s.created_at[:16] }}{% if s.capture_id and captures.get(s.capture_id) %} · ekran: <a href="{{ url_for('siron.capture', capture_id=s.capture_id) }}">{{ captures[s.capture_id].name }}</a>{% endif %}
+    {% if s.sql_id %} · <code>{{ s.sql_id }}</code>{% endif %}{% if s.note %} · {{ s.note }}{% endif %}</p>
+  <details><summary class="small">SQL</summary><pre>{{ format_sql(s.sql_text) }}</pre></details>
+  {{ results_table((s.columns, s.rows, s.truncated), s.sources) }}
+  <form method="post" action="{{ url_for('siron.delete_snapshot', snapshot_id=s.id) }}"><button class="secondary">Rapordan çıkar</button></form>
+</div>
+{% else %}<p class="muted">Henüz yok.</p>{% endfor %}
+{% endblock %}

@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import er_svg, er_legend, capture_nav with context %}
+{% block content %}
+{% if capture %}<h1>{{ capture.name }}</h1>{{ capture_nav(capture, 'er') }}{% else %}<h1>ER diyagramı — {{ title }}</h1>{% endif %}
+<form class="toolbar" method="get" style="margin-bottom:8px">
+  {% if capture %}<input type="hidden" name="capture" value="{{ capture.id }}">{% endif %}
+  <div><label>En düşük güven</label><select name="min" onchange="this.form.submit()">{% for v in [0, 50, 60, 70, 85, 90, 100] %}<option value="{{ v }}" {% if min_conf == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  <a class="btn secondary" href="{{ url_for('siron.er_export', fmt='mmd', capture=capture.id if capture else None, min=min_conf) }}">Mermaid</a>
+  <a class="btn secondary" href="{{ url_for('siron.er_export', fmt='dot', capture=capture.id if capture else None, min=min_conf) }}">Graphviz DOT</a>
+  <button type="button" class="secondary" onclick="downloadSvg()">SVG indir</button>
+  <span class="small muted" style="margin-bottom:9px">{{ view.nodes|length }} tablo · {{ rel_count }} ilişki · Kutuları sürükleyebilirsiniz; çift tıklama tablo sayfasını açar.</span>
+</form>
+{{ er_legend() }}
+{% if view.nodes %}
+<div class="erwrap">{{ er_svg(view) }}</div>
+{% else %}<p class="muted">Gösterilecek tablo yok.</p>{% endif %}
+<script>
+(function () {
+  const svg = document.getElementById("er");
+  if (!svg) return;
+  const nodes = {};
+  svg.querySelectorAll("g.n").forEach(g => {
+    const m = /translate\(([-\d.]+),([-\d.]+)\)/.exec(g.getAttribute("transform"));
+    nodes[g.dataset.id] = {g, x: +m[1], y: +m[2], w: +g.dataset.w, h: +g.dataset.h};
+  });
+  const edges = [...svg.querySelectorAll(".e")];
+  function clip(n, tx, ty) {
+    const cx = n.x + n.w / 2, cy = n.y + n.h / 2, dx = tx - cx, dy = ty - cy;
+    if (!dx && !dy) return [cx, cy];
+    const s = Math.min(dx ? (n.w / 2) / Math.abs(dx) : Infinity, dy ? (n.h / 2) / Math.abs(dy) : Infinity);
+    return [cx + dx * s, cy + dy * s];
+  }
+  function redraw(id) {
+    edges.forEach(e => {
+      if (e.dataset.a !== id && e.dataset.b !== id) return;
+      const a = nodes[e.dataset.a], b = nodes[e.dataset.b];
+      if (e.dataset.self) { e.setAttribute("d", `M${a.x + a.w},${a.y + 12} c 34,-22 34,40 0,${a.h - 24}`); return; }
+      const p1 = clip(a, b.x + b.w / 2, b.y + b.h / 2), p2 = clip(b, a.x + a.w / 2, a.y + a.h / 2);
+      e.setAttribute("x1", p1[0]); e.setAttribute("y1", p1[1]); e.setAttribute("x2", p2[0]); e.setAttribute("y2", p2[1]);
+    });
+  }
+  let drag = null;
+  function pt(ev) { const p = svg.createSVGPoint(); p.x = ev.clientX; p.y = ev.clientY; return p.matrixTransform(svg.getScreenCTM().inverse()); }
+  svg.addEventListener("mousedown", ev => {
+    const g = ev.target.closest("g.n"); if (!g) return;
+    const n = nodes[g.dataset.id], p = pt(ev);
+    drag = {n, id: g.dataset.id, ox: p.x - n.x, oy: p.y - n.y}; ev.preventDefault();
+  });
+  window.addEventListener("mousemove", ev => {
+    if (!drag) return;
+    const p = pt(ev); drag.n.x = p.x - drag.ox; drag.n.y = p.y - drag.oy;
+    drag.n.g.setAttribute("transform", `translate(${drag.n.x},${drag.n.y})`); redraw(drag.id);
+  });
+  window.addEventListener("mouseup", () => { drag = null; });
+  svg.addEventListener("dblclick", ev => { const g = ev.target.closest("g.n"); if (g) location.href = g.dataset.url; });
+  svg.addEventListener("mouseover", ev => {
+    const g = ev.target.closest("g.n"); if (!g || drag) return;
+    const id = g.dataset.id, near = new Set([id]);
+    edges.forEach(e => { if (e.dataset.a === id || e.dataset.b === id) { e.classList.add("hl"); near.add(e.dataset.a); near.add(e.dataset.b); } else e.classList.add("dim"); });
+    Object.entries(nodes).forEach(([k, n]) => n.g.classList.toggle(near.has(k) ? "hl" : "dim", true));
+  });
+  svg.addEventListener("mouseout", ev => {
+    if (!ev.target.closest("g.n")) return;
+    svg.querySelectorAll(".hl,.dim").forEach(x => x.classList.remove("hl", "dim"));
+  });
+  window.downloadSvg = function () {
+    const clone = svg.cloneNode(true);
+    const css = [...document.styleSheets].flatMap(s => { try { return [...s.cssRules]; } catch (e) { return []; } })
+      .map(r => r.cssText).filter(t => t.includes("svg.er")).join("\n");
+    const style = document.createElementNS("http://www.w3.org/2000/svg", "style"); style.textContent = css;
+    clone.insertBefore(style, clone.firstChild);
+    const blob = new Blob([new XMLSerializer().serializeToString(clone)], {type: "image/svg+xml"});
+    const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "siron_er.svg"; a.click();
+  };
+})();
+</script>
+{% endblock %}

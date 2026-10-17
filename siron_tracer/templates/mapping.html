@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import table_link, usage_badges, status_badge with context %}
+{% block content %}
+<h1>Kolon eşleme</h1>
+<p class="hint">Ekranlarda kullanılan (ve not eklenmiş) tüm kolonlar: göç için veri eşleme matrisi. Durum, hedef alan ve notları
+  tablo sayfasından düzenleyebilirsiniz. Satır rengi yok = henüz karar verilmemiş.</p>
+<form class="toolbar" method="get" style="margin-bottom:10px">
+  <div><label>Durum</label><select name="status" onchange="this.form.submit()"><option value="">Hepsi</option>
+    {% for k, v in STATUSES.items() %}<option value="{{ k }}" {% if status == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  <a class="btn secondary" href="{{ url_for('siron.mapping_csv') }}">CSV indir (Excel)</a>
+  <span class="small muted" style="margin-bottom:9px">{{ rows|length }} kolon</span>
+</form>
+<div class="scroll">
+<table>
+  <tr><th>Tablo</th><th>Kolon</th><th>Tip</th><th>DB açıklaması</th><th>Kullanım</th><th>Ekranlar</th><th>Durum</th><th>Hedef alan</th><th>Not</th></tr>
+  {% for r in rows %}
+  {% set st = r.ann.status or r.table_ann.status %}
+  <tr><td class="nowrap">{{ table_link(r.col[:2]) }}</td>
+    <td class="mono"><a href="{{ url_for('siron.table', owner=r.col[0] or '-', name=r.col[1]) }}#col-{{ r.col[2] }}"><b>{{ r.col[2] }}</b></a></td>
+    <td class="small nowrap">{{ r.info.type_label if r.info else '' }}</td><td class="small">{{ r.info.comment if r.info and r.info.comment else '' }}</td>
+    <td>{{ usage_badges(r.kinds) }}</td>
+    <td class="small">{% for c in r.screens %}{{ c.name }}{{ ', ' if not loop.last }}{% endfor %}</td>
+    <td>{{ status_badge(st) }}{% if not r.ann.status and r.table_ann.status %}<span class="small muted"> (tablo)</span>{% endif %}</td>
+    <td class="small"><b>{{ r.ann.target or '' }}</b></td><td class="small">{{ r.ann.note or '' }}</td></tr>
+  {% else %}<tr><td colspan="9" class="muted">Henüz kolon yok. Veri sözlüğünü yükleyip ekran yakalayın.</td></tr>{% endfor %}
+</table>
+</div>
+{% endblock %}

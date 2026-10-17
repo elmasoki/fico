@@ -35,17 +35,35 @@
 </div>
 
 <div class="card">
-  <h1>Nesne kataloğu</h1>
-  <p class="small">{{ object_count }} nesne yüklü ({{ settings.schemas|join(', ') }}).
-    Katalog yüklüyse tablo tespiti SQL içindeki tüm gerçek nesne adlarına göre yapılır (paket/fonksiyonlar dahil);
-    değilse FROM/JOIN/INTO/UPDATE sezgiseli kullanılır.</p>
-  <form method="post" action="{{ url_for('siron.refresh_objects') }}"><button class="secondary">Kataloğu yenile</button></form>
+  <h1>Veri sözlüğü</h1>
+  {% if catalog_tables %}
+  <p class="small"><b>{{ catalog_tables|thousands }}</b> tablo/view yüklü ({{ settings.schemas|join(', ') }}),
+    son yükleme {{ (catalog_version or '')[:16] }}.</p>
+  {% else %}
+  <p class="small warn">Veri sözlüğü henüz yüklenmedi.</p>
+  {% endif %}
+  <p class="muted small">Kolonlar, tipler, açıklamalar, PK/UK/FK constraint'leri ve satır sayıları okunur.
+    Kolon düzeyinde analiz, ilişki keşfi, değer arama ve sorgu oluşturucu bunu kullanır.</p>
+  <form method="post" action="{{ url_for('siron.refresh_catalog') }}"><button class="secondary">Veri sözlüğünü yükle / yenile</button></form>
 </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-top:0">Önerilen çalışma akışı</h2>
+  <ol class="small" style="margin:0;padding-left:20px">
+    <li><b>Kontrol</b> sayfasında bağlantıyı ve audit kayıtlarını doğrulayın, <b>veri sözlüğünü yükleyin</b>.</li>
+    <li>Siron'da hiçbir şey yapmadan 1-2 dakikalık bir yakalama alıp <b>gürültü</b> olarak işaretleyin (arka plan SQL'leri ayıklanır).</li>
+    <li>Her ekran / sekme / işlem için ayrı bir yakalama alın. Özet sekmesi tabloları, <b>Kolonlar</b> sekmesi ekranın hangi kolonları gösterdiğini verir.</li>
+    <li>Ekranda gördüğünüz bir alanın nereden geldiğini <b>Ekrandaki değeri bul</b> ile tespit edin.</li>
+    <li><b>Tablolar</b> ve <b>Kolon eşleme</b> sayfalarında taşınacakları işaretleyip hedef alanı ve iş anlamını not edin.</li>
+    <li><b>İlişkiler</b>, <b>ER diyagramı</b> ve <b>Sorgu oluşturucu</b> ile veri çekme sorgularını hazırlayın; sonucu CSV olarak alın.</li>
+    <li><b>Raporlar</b>dan tek dosyalık HTML veri eşleme dokümanını üretin.</li>
+  </ol>
 </div>
 
 <h2>Yakalamalar</h2>
 <table>
-  <tr><th>#</th><th>Ad</th><th>Durum</th><th>Başlangıç (DB saati)</th><th>Bitiş</th><th>Kaynak</th><th>Kayıt</th><th>Not</th></tr>
+  <tr><th>#</th><th>Ad</th><th>Durum</th><th>Başlangıç (DB saati)</th><th>Bitiş</th><th>Kaynak</th><th class="right">Kayıt</th><th>Not</th></tr>
   {% for c in captures %}
   <tr>
     <td>{{ c.id }}</td>
@@ -53,7 +71,7 @@
     <td>{% if c.status == 'recording' %}<span class="badge rec">kayıtta</span>{% else %}<span class="badge ok">tamam</span>{% endif %}
         {% if c.is_noise %}<span class="badge noise">gürültü</span>{% endif %}</td>
     <td>{{ c.start_local[:19] }}</td><td>{{ (c.end_local or '')[:19] }}</td>
-    <td>{{ c.source }}</td><td>{{ c.record_count }}</td><td class="small">{{ c.notes or '' }}</td>
+    <td>{{ c.source }}</td><td class="right">{{ c.record_count|thousands }}</td><td class="small">{{ c.notes or '' }}</td>
   </tr>
   {% else %}
   <tr><td colspan="8" class="muted">Henüz yakalama yok.</td></tr>

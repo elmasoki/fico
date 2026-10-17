@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import table_link, capture_nav, usage_badges, status_badge with context %}
+{% block title %}{{ capture.name }} - kolonlar{% endblock %}
+{% block content %}
+<h1>{{ capture.name }}</h1>
+{{ capture_nav(capture, tab) }}
+<p class="hint">Bu ekranın SQL'lerinde geçen kolonlar. <b>gösterim</b>: SELECT listesinde (ekranda gösterilen veri büyük olasılıkla budur),
+  <b>filtre/join</b>: WHERE/ON koşullarında, <b>yazma</b>: INSERT/UPDATE ile değiştirilen kolonlar.
+  {% if stars %}<br><b class="warn">Dikkat:</b> {{ stars|join(', ') }} için <code>SELECT *</code> kullanılmış; bu tabloların tüm kolonları okunuyor.{% endif %}</p>
+{% for key, cols in by_table.items() %}
+<div class="card">
+  <h2 style="margin-top:0">{{ table_link(key) }} <span class="muted small">{{ cols|length }} kolon</span> {{ status_badge(ann(annotations, key).status) }}</h2>
+  <table>
+    <tr><th>Kolon</th><th>Tip</th><th>Açıklama (DB yorumu)</th><th>Kullanım</th><th>Durum</th><th>Hedef alan</th><th>Not</th><th class="right">SQL</th></tr>
+    {% for col, cu, info in cols %}
+    {% set a = ann(annotations, key, col[2]) %}
+    <tr><td class="mono"><b>{{ col[2] }}</b></td><td class="small">{{ info.type_label if info else '' }}</td>
+      <td class="small">{{ info.comment if info and info.comment else '' }}</td>
+      <td>{{ usage_badges(cu.kinds) }}</td><td>{{ status_badge(a.status) }}</td>
+      <td class="small">{{ a.target or '' }}</td><td class="small">{{ a.note or '' }}</td>
+      <td class="right small">{% for sid in cu.sql_ids|sort %}<a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=sid) }}">{{ sid[:6] }}</a> {% endfor %}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<p class="muted">Kolon tespit edilemedi. Veri sözlüğü yüklü değilse yalnızca alias'lı (t.kolon) referanslar bulunabilir.</p>
+{% endfor %}
+{% endblock %}

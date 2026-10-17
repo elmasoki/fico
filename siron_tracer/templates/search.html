@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% from "_macros.html" import table_label, table_link, status_badge with context %}
+{% block content %}
+<h1>Arama: "{{ q }}"</h1>
+{% if not q %}<p class="muted">Üstteki kutuya bir tablo, kolon, SQL parçası veya not yazın.</p>{% else %}
+<div class="grid">
+<div class="card"><h2 style="margin-top:0">Ekranlar ({{ results.captures|length }})</h2>
+  {% for c in results.captures %}<p><a href="{{ url_for('siron.capture', capture_id=c.id) }}">{{ c.name }}</a> <span class="small muted">{{ c.notes or '' }}</span></p>{% else %}<p class="muted small">—</p>{% endfor %}</div>
+<div class="card"><h2 style="margin-top:0">Tablolar ({{ results.tables|length }})</h2>
+  {% for t in results.tables %}<p>{{ table_link(t.key) }} <span class="small muted">{{ (t.comment or '')[:100] }}</span></p>{% else %}<p class="muted small">—</p>{% endfor %}</div>
+</div>
+<div class="card"><h2 style="margin-top:0">Kolonlar ({{ results.columns|length }})</h2>
+  <table><tr><th>Kolon</th><th>Tip</th><th>Açıklama</th></tr>
+  {% for c in results.columns %}<tr><td><a href="{{ url_for('siron.table', owner=c.owner, name=c.table) }}#col-{{ c.name }}">{{ c.owner }}.{{ c.table }}.<b>{{ c.name }}</b></a></td><td class="small">{{ c.type_label }}</td><td class="small">{{ c.comment or '' }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted small">—</td></tr>{% endfor %}</table></div>
+<div class="card"><h2 style="margin-top:0">SQL'ler ({{ results.statements|length }})</h2>
+  <table><tr><th>Ekran</th><th>SQL_ID</th><th>SQL</th></tr>
+  {% for s in results.statements %}<tr><td class="small">{{ s.capture_name }}</td><td><a href="{{ url_for('siron.statement', capture_id=s.capture_id, sql_id=s.sql_id) }}"><code>{{ s.sql_id }}</code></a></td><td class="sqlcell">{{ s.sql_text }}</td></tr>
+  {% else %}<tr><td colspan="3" class="muted small">—</td></tr>{% endfor %}</table></div>
+<div class="card"><h2 style="margin-top:0">Notlar ({{ results.notes|length }})</h2>
+  {% for a in results.notes %}<p>{{ table_link((a.owner or None, a.table_name)) }}{% if a.column_name %}.{{ a.column_name }}{% endif %} {{ status_badge(a.status) }}
+    <span class="small">{{ a.note or '' }}{% if a.target %} → <b>{{ a.target }}</b>{% endif %}</span></p>{% else %}<p class="muted small">—</p>{% endfor %}</div>
+{% endif %}
+{% endblock %}

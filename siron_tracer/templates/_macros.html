@@ -10,15 +10,98 @@
 </div>
 {% endmacro %}
 
-{% macro results_table(result) %}
+{% macro results_table(result, sources=None) %}
 {% set cols, rows, truncated = result %}
 <p class="muted small">{{ rows|length }} satır{% if truncated %} — <b class="warn">ilk {{ rows|length }} satır gösteriliyor</b>{% endif %}</p>
 <div class="scroll">
 <table>
-  <tr>{% for c in cols %}<th>{{ c }}</th>{% endfor %}</tr>
+  <tr>{% for c in cols %}<th>{{ c }}{% if sources and sources[loop.index0] %}<span class="colsrc">{{ sources[loop.index0] }}</span>{% endif %}</th>{% endfor %}</tr>
   {% for r in rows %}<tr>{% for v in r %}<td>{{ '' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}
 </table>
 </div>
 {% endmacro %}
 
 {% macro table_label(t) %}{% if t[0] %}{{ t[0] }}.{% endif %}{{ t[1] }}{% endmacro %}
+
+{% macro table_link(t, cls='') %}<a class="{{ cls }}" href="{{ url_for('siron.table', owner=t[0] or '-', name=t[1]) }}">{{ table_label(t) }}</a>{% endmacro %}
+
+{% macro col_link(c) %}<a href="{{ url_for('siron.table', owner=c[0] or '-', name=c[1]) }}#col-{{ c[2] }}">{{ table_label(c) }}.{{ c[2] }}</a>{% endmacro %}
+
+{% macro status_badge(status) %}{% if status %}<span class="badge st-{{ status }}-b">{{ STATUSES.get(status, status) }}</span>{% endif %}{% endmacro %}
+
+{% macro usage_badges(kinds) %}{% for k in kinds|sort %}<span class="badge u-{{ k }}">{{ USAGE_LABELS.get(k, k) }}</span>{% endfor %}{% endmacro %}
+
+{% macro conf_badge(c) %}<span class="conf {{ 'hi' if c >= 85 else 'mid' if c >= 55 else 'lo' }}" title="güven puanı">{{ c }}</span>{% endmacro %}
+
+{% macro source_badges(r) %}{% for s in r.sources %}<span class="badge src-{{ s }}" title="{{ r.sources[s] }}">{{ {'constraint':'FK','sql':'SQL','name':'tahmin'}[s] }}</span>{% endfor %}{% endmacro %}
+
+{% macro check_text(r) %}{% if r.check %}{% set m, t = r.check %}<span class="small {{ 'ok' if r.ratio is not none and r.ratio >= 0.95 else 'warn' if r.ratio is not none and r.ratio >= 0.5 else 'err' }}">{{ m }}/{{ t }}{% if t %} (%{{ '%.0f'|format(100 * m / t) }}){% endif %}</span>{% endif %}{% endmacro %}
+
+{% macro relation_rows(rels, check=true) %}
+<table>
+  <tr><th>Güven</th><th>Alt tablo (kolon)</th><th></th><th>Üst tablo (kolon)</th><th>Kaynak</th><th>Veri kontrolü</th>{% if check %}<th></th>{% endif %}</tr>
+  {% for r in rels %}
+  <tr>
+    <td>{{ conf_badge(r.confidence) }}</td>
+    <td>{{ table_link(r.child) }} <span class="mono">({{ r.child_cols|join(', ') }})</span></td>
+    <td class="muted">{{ '→' if r.directed else '↔' }}</td>
+    <td>{{ table_link(r.parent) }} <span class="mono">({{ r.parent_cols|join(', ') }})</span></td>
+    <td class="nowrap">{{ source_badges(r) }}{% if r.sql_ids %}<span class="small muted" title="{{ r.sql_ids|join(', ') }}"> {{ r.sql_ids|length }} SQL</span>{% endif %}</td>
+    <td>{{ check_text(r) }}</td>
+    {% if check %}<td>{% if 'constraint' not in r.sources %}
+      <form method="post" action="{{ url_for('siron.relation_check') }}" class="inline"><input type="hidden" name="rid" value="{{ r.id }}">
+      <button class="secondary" style="margin:0;padding:3px 9px;font-size:12px" title="Alt tablodaki farklı değerlerin üst tabloda olup olmadığını örnekleyerek kontrol eder">Veriyle doğrula</button></form>{% endif %}</td>{% endif %}
+  </tr>
+  {% else %}<tr><td colspan="7" class="muted">İlişki bulunamadı.</td></tr>{% endfor %}
+</table>
+{% endmacro %}
+
+{% macro capture_nav(capture, tab) %}
+<div class="tabs">
+  <a class="{{ 'on' if tab == 'overview' }}" href="{{ url_for('siron.capture', capture_id=capture.id) }}">Özet</a>
+  <a class="{{ 'on' if tab == 'columns' }}" href="{{ url_for('siron.capture_columns', capture_id=capture.id) }}">Kolonlar</a>
+  <a href="{{ url_for('siron.relations', capture=capture.id) }}">İlişkiler</a>
+  <a href="{{ url_for('siron.er', capture=capture.id) }}">ER diyagramı</a>
+  <a class="{{ 'on' if tab == 'find' }}" href="{{ url_for('siron.capture_find', capture_id=capture.id) }}">Ekrandaki değeri bul</a>
+  <a href="{{ url_for('siron.report', capture=capture.id) }}" target="_blank">Rapor</a>
+</div>
+{% endmacro %}
+
+{% macro er_svg(view, interactive=true) %}
+<svg class="er{{ ' interactive' if interactive }}" id="er" xmlns="http://www.w3.org/2000/svg" width="{{ view.width }}" height="{{ view.height }}" viewBox="0 0 {{ view.width }} {{ view.height }}">
+  <defs>
+    {% for cls, color in [('constraint', '#344054'), ('sql', '#1f5fbf'), ('name', '#d97706')] %}
+    <marker id="arr-{{ cls }}" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="9" markerHeight="9" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="{{ color }}"/></marker>
+    {% endfor %}
+  </defs>
+  {% for e in view.edges %}
+    {% if e.self %}
+    {% set n = (view.nodes|selectattr('id', 'equalto', e.a)|first) %}
+    <path class="e e-{{ e.cls }}{{ ' verified' if e.verified }}" data-a="{{ e.a }}" data-b="{{ e.b }}" data-self="1"
+          d="M{{ n.x + n.w }},{{ n.y + 12 }} c 34,-22 34,40 0,{{ n.h - 24 }}"><title>{{ e.title }}</title></path>
+    {% else %}
+    <line class="e e-{{ e.cls }}{{ ' verified' if e.verified }}" data-a="{{ e.a }}" data-b="{{ e.b }}"
+          x1="{{ e.x1 }}" y1="{{ e.y1 }}" x2="{{ e.x2 }}" y2="{{ e.y2 }}"{% if e.directed %} marker-end="url(#arr-{{ e.cls }})"{% endif %}><title>{{ e.title }}</title></line>
+    {% endif %}
+  {% endfor %}
+  {% for n in view.nodes %}
+  <g class="n{{ ' st-' ~ n.status if n.status }}{{ ' unknown' if not n.known }}" data-id="{{ n.id }}" data-url="{{ n.url }}"
+     data-w="{{ n.w }}" data-h="{{ n.h }}" transform="translate({{ n.x }},{{ n.y }})">
+    <rect width="{{ n.w }}" height="{{ n.h }}" rx="6"/>
+    <text class="t" x="10" y="{{ 18 if n.sub else 25 }}">{{ n.label }}</text>
+    {% if n.sub %}<text class="s" x="10" y="33">{{ n.sub }}</text>{% endif %}
+    <title>{{ n.title }}{% if n.status %} · {{ STATUSES.get(n.status) }}{% endif %}</title>
+  </g>
+  {% endfor %}
+</svg>
+{% endmacro %}
+
+{% macro er_legend() %}
+<div class="legend">
+  <span><i style="border-color:#344054"></i>Constraint (FK)</span>
+  <span><i style="border-color:#1f5fbf;border-top-width:3px"></i>Siron SQL join</span>
+  <span><i style="border-color:#d97706;border-top-style:dashed"></i>Ad/tip tahmini</span>
+  <span>Kalın çizgi: veriyle doğrulandı · Ok yönü: alt tablo → üst tablo</span>
+  <span><span class="badge st-migrate-b">Taşınacak</span><span class="badge st-review-b">İncelenecek</span><span class="badge st-ignore-b">Gereksiz</span></span>
+</div>
+{% endmacro %}

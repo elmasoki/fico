@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import table_label, table_link, conf_badge, source_badges with context %}
+{% block content %}
+<h1>Sorgu oluşturucu</h1>
+<p class="hint">Veri çekmek istediğiniz tabloları seçin. Araç, keşfedilen ilişkiler üzerinden en güvenilir JOIN yolunu bulur
+  (gerekirse aradaki bağlantı tablolarını da ekler) ve SELECT'i üretir. Sonucu SQL sayfasında çalıştırıp tamamını CSV olarak alabilirsiniz.</p>
+<form method="post" class="card">
+  <div class="grid">
+    <div>
+      <h2 style="margin-top:0">Ekranlarda kullanılan tablolar</h2>
+      <div class="scroll" style="max-height:340px">
+      <table><tr><th>Seç</th><th>Kök</th><th>Tablo</th></tr>
+      {% for k in touched %}{% set l = table_label(k)|trim %}
+        <tr><td><input type="checkbox" name="t" value="{{ l }}" {% if k in selected or k == root %}checked{% endif %}></td>
+          <td><input type="radio" name="root" value="{{ l }}" {% if k == root %}checked{% endif %}></td><td>{{ table_link(k) }}</td></tr>
+      {% else %}<tr><td colspan="3" class="muted">Henüz yakalama yok.</td></tr>{% endfor %}
+      </table></div>
+    </div>
+    <div>
+      <h2 style="margin-top:0">Diğer tablolar</h2>
+      <label>Şemadan başka tablolar (her satıra bir tane, SAHİP.TABLO veya TABLO)</label>
+      <textarea name="extra" rows="4">{{ form.get('extra', '') }}</textarea>
+      <label><input type="checkbox" name="used_only" value="1" {% if form.get('used_only') %}checked{% endif %}> Sadece ekranlarda kullanılan kolonları seç (yoksa t.*)</label>
+      <div class="row">
+        <div><label>JOIN tipi</label><select name="join">{% for j in ['LEFT JOIN', 'JOIN'] %}<option {% if form.get('join') == j %}selected{% endif %}>{{ j }}</option>{% endfor %}</select></div>
+        <div><label>İlişki için en düşük güven</label><select name="min">{% for v in [50, 60, 70, 85, 90, 100] %}<option value="{{ v }}" {% if form.get('min', '50') == v|string %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+      </div>
+      <p class="small muted">Kök seçilmezse ilk seçilen tablo kök olur. LEFT JOIN kökteki tüm satırları korur.</p>
+      <button>SQL oluştur</button>
+    </div>
+  </div>
+</form>
+
+{% if sql %}
+<div class="card">
+  <h2 style="margin-top:0">Oluşturulan SQL</h2>
+  {% if unreachable %}<p class="warn small">Şu tablolar için ilişki yolu bulunamadı, CROSS JOIN olarak eklendi (düzeltmeniz gerekir):
+    {% for k in unreachable %}<b>{{ table_label(k) }}</b> {% endfor %}</p>{% endif %}
+  <form method="post" action="{{ url_for('siron.sql_runner') }}">
+    <textarea class="sql" name="sql">{{ sql }}</textarea>
+    <div class="toolbar"><button name="do" value="run">Çalıştır</button><button name="do" value="csv" class="secondary">Tüm sonucu CSV indir</button>
+      <button name="do" value="edit" class="secondary">SQL sayfasında düzenle</button></div>
+  </form>
+  {% if edges %}
+  <h2>Kullanılan ilişkiler</h2>
+  <table>{% for r in edges %}<tr><td>{{ conf_badge(r.confidence) }}</td><td>{{ r.text }}</td><td>{{ source_badges(r) }}</td></tr>{% endfor %}</table>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}

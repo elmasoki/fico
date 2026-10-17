@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% from "_macros.html" import table_link, capture_nav, col_link with context %}
+{% block title %}{{ capture.name }} - değer bul{% endblock %}
+{% block content %}
+<h1>{{ capture.name }}</h1>
+{{ capture_nav(capture, tab) }}
+<form method="post" class="card">
+  <h2 style="margin-top:0">Ekranda gördüğünüz değer hangi tablo / kolondan geliyor?</h2>
+  <p class="small muted">Siron ekranındaki bir alanın değerini yazın (müşteri adı, hesap no, risk puanı…). Eşleme yaparken en hızlı yol budur.</p>
+  <div class="toolbar">
+    <div style="flex:2;min-width:220px"><label>Değer</label><input type="text" name="value" value="{{ needle }}" required autofocus></div>
+    <div><label>Eşleşme</label><select name="mode">{% for k, v in modes.items() %}<option value="{{ k }}" {% if mode == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+    <div style="flex:2;min-width:260px"><label>Yöntem</label><select name="strategy">
+      <option value="results" {% if strategy == 'results' %}selected{% endif %}>Ekranın SQL'lerini tekrar çalıştır ve sonuçlarda ara (hızlı, önerilen)</option>
+      <option value="tables" {% if strategy == 'tables' %}selected{% endif %}>Ekranın tablolarının kolonlarında ara (her tablo bir kez taranır)</option>
+    </select></div>
+  </div>
+  <label style="display:inline-block;margin-right:16px"><input type="checkbox" name="all_sets" value="1" {% if request.form.get('all_sets') %}checked{% endif %}> Tüm bind setlerini dene (sonuç yöntemi)</label>
+  <label style="display:inline-block"><input type="checkbox" name="include_big" value="1" {% if request.form.get('include_big') %}checked{% endif %}> Büyük tabloları da tara (> {{ settings.big_table_rows|thousands }} satır; yavaş olabilir)</label><br>
+  <button>Ara</button>
+</form>
+
+{% if posted %}
+<div class="card">
+  <h2 style="margin-top:0">Sonuç: {{ findings|length }} eşleşme <span class="muted small">({{ searched }} {{ 'sorgu' if strategy == 'results' else 'tablo' }} tarandı)</span></h2>
+  {% if findings %}
+  <table>
+    {% if strategy == 'results' %}
+    <tr><th>Kaynak kolon</th><th>Sonuç kolonu</th><th>SQL_ID</th><th class="right">Eşleşen satır</th><th>Örnek değer</th></tr>
+    {% for f in findings %}
+    <tr><td>{% if f.source %}<b>{{ col_link(f.source) }}</b>{% else %}<span class="muted">ifade / hesaplanmış</span>{% endif %}</td>
+      <td class="mono">{{ f.column }}</td>
+      <td><a href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=f.sql_id, rec=f.rec) }}"><code>{{ f.sql_id }}</code></a></td>
+      <td class="right">{{ f.count }} / {{ f.rows }}</td><td class="small">{{ f.sample }}</td></tr>
+    {% endfor %}
+    {% else %}
+    <tr><th>Kolon</th><th class="right">Eşleşen satır</th><th></th></tr>
+    {% for f in findings %}
+    <tr><td><b>{{ col_link(f.source) }}</b></td><td class="right">{{ f.count }}{% if f.capped %}+{% endif %}</td>
+      <td><form method="post" action="{{ url_for('siron.sql_runner') }}" class="inline"><input type="hidden" name="sql" value="{{ f.sample_sql }}">
+        <button class="secondary" style="margin:0;padding:3px 9px;font-size:12px">Satırları gör</button></form></td></tr>
+    {% endfor %}
+    {% endif %}
+  </table>
+  {% else %}<p class="muted">Eşleşme bulunamadı. Diğer yöntemi veya "İçeriyor" eşleşmesini deneyin; değer ekranda biçimlendirilmiş (tarih, para) gösteriliyor olabilir.</p>{% endif %}
+  {% if errors %}<details><summary class="small">{{ errors|length }} uyarı / hata</summary>
+    <ul class="small">{% for what, msg in errors %}<li><code>{{ what }}</code>: {{ msg }}</li>{% endfor %}</ul></details>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

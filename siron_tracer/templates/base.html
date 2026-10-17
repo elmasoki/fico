@@ -9,18 +9,28 @@
 <body>
 <header>
   <a class="brand" href="{{ url_for('siron.index') }}">Siron SQL Tracer</a>
-  <a href="{{ url_for('siron.index') }}">Yakalamalar</a>
-  <a href="{{ url_for('siron.tables') }}">Tablo haritası</a>
-  <a href="{{ url_for('siron.sql_runner') }}">SQL çalıştır</a>
-  <a href="{{ url_for('siron.check') }}">Kurulum kontrolü</a>
-  <span class="meta">kaynak: <b>{{ settings.audit_source }}</b> · Siron kullanıcısı: <b>{{ settings.siron_db_user }}</b>
-    · bağlantı: {{ settings.oracle_user or '-' }}@{{ settings.oracle_dsn or '-' }}</span>
+  <nav>
+    <a href="{{ url_for('siron.index') }}">Ekranlar</a>
+    <a href="{{ url_for('siron.tables') }}">Tablolar</a>
+    <a href="{{ url_for('siron.mapping') }}">Kolon eşleme</a>
+    <a href="{{ url_for('siron.relations') }}">İlişkiler</a>
+    <a href="{{ url_for('siron.er') }}">ER diyagramı</a>
+    <a href="{{ url_for('siron.builder') }}">Sorgu oluşturucu</a>
+    <a href="{{ url_for('siron.sql_runner') }}">SQL</a>
+    <a href="{{ url_for('siron.report_options') }}">Raporlar</a>
+    <a href="{{ url_for('siron.check') }}">Kontrol</a>
+  </nav>
+  <form class="search" action="{{ url_for('siron.search') }}">
+    <input type="text" name="q" placeholder="Tablo, kolon, SQL, not ara…" value="{{ request.args.get('q', '') if request.endpoint == 'siron.search' else '' }}">
+  </form>
 </header>
 <main>
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
   {% endwith %}
   {% block content %}{% endblock %}
+  <p class="muted small" style="margin-top:30px">kaynak: <b>{{ settings.audit_source }}</b> · Siron kullanıcısı: <b>{{ settings.siron_db_user }}</b>
+    · şemalar: {{ settings.schemas|join(', ') }} · bağlantı: {{ settings.oracle_user or '-' }}@{{ settings.oracle_dsn or '-' }}</p>
 </main>
 </body>
 </html>

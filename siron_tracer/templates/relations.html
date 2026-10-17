@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% from "_macros.html" import relation_rows, capture_nav with context %}
+{% block content %}
+{% if capture %}<h1>{{ capture.name }}</h1>{{ capture_nav(capture, 'relations') }}{% else %}<h1>İlişkiler — {{ title }}</h1>{% endif %}
+<div class="hint">
+  İlişkiler üç kaynaktan birleştirilir: <span class="badge src-constraint">FK</span> veritabanındaki foreign key constraint'leri (güven 100),
+  <span class="badge src-sql">SQL</span> Siron'un kendi çalıştırdığı SQL'lerdeki join koşulları (90; constraint olmasa da gerçek ilişkidir),
+  <span class="badge src-name">tahmin</span> bir kolonun adı ve tipi başka tablonun anahtar kolonuyla uyuşuyor (50-70).
+  "Veriyle doğrula", alt tablodaki farklı değerlerden örnek alıp üst tabloda var olup olmadığını sayar; %95 ve üstü güveni yükseltir, %50 altı düşürür.
+  {% if not has_catalog %}<br><b class="warn">Veri sözlüğü yüklü değil:</b> yalnızca SQL join'leri görünür.{% endif %}
+</div>
+<form class="card toolbar" method="get">
+  {% if capture %}<input type="hidden" name="capture" value="{{ capture.id }}">{% endif %}
+  <div><label>En düşük güven</label><select name="min">{% for v in [0, 50, 60, 70, 85, 90] %}<option value="{{ v }}" {% if min_conf == v %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  <div><label>Kaynak</label><select name="source"><option value="">Hepsi</option>
+    {% for k, v in source_labels.items() %}<option value="{{ k }}" {% if source == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></div>
+  <button>Filtrele</button>
+  <a class="btn secondary" href="{{ url_for('siron.er', capture=capture.id if capture else None, min=min_conf or 50) }}">ER diyagramında göster</a>
+</form>
+<form method="post" action="{{ url_for('siron.relation_check_all', capture=capture.id if capture else None) }}" onsubmit="return confirm('Constraint olmayan ve henüz kontrol edilmemiş tüm ilişkiler veriyle kontrol edilecek. Devam?')">
+  <p class="small">{{ rels|length }} ilişki · {{ table_count }} tablo
+  <button class="secondary" style="margin:0 0 0 8px;padding:3px 10px;font-size:12px">Tümünü veriyle doğrula</button></p>
+</form>
+{{ relation_rows(rels) }}
+{% endblock %}

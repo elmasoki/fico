@@ -89,19 +89,52 @@ class Oracle:
             return str(exc)
 
     # ------------------------------------------------------------------ catalogue
-    def load_objects(self, schemas: List[str]) -> List[Tuple[str, str, str]]:
-        """Siron objects; DBA_OBJECTS when readable (sees everything), else ALL_OBJECTS."""
+    def load_catalog(self, schemas: List[str]) -> dict:
+        """Data dictionary of the Siron schemas: objects, tables, columns, comments,
+        PK/UK/FK constraints. DBA_ views when readable, otherwise ALL_ views."""
         names = {"s%d" % i: s for i, s in enumerate(schemas)}
-        sql = ("SELECT owner, object_name, object_type FROM %s WHERE owner IN (%s) "
-               "AND object_type IN ('TABLE','VIEW','MATERIALIZED VIEW','SYNONYM','PACKAGE',"
-               "'FUNCTION','PROCEDURE','SEQUENCE','TYPE')")
-        marks = ",".join(":" + k for k in names)
+        owners = ",".join(":" + k for k in names)
+        queries = {
+            "objects": "SELECT owner, object_name, object_type FROM {p}_objects WHERE owner IN ({o}) "
+                       "AND object_type IN ('TABLE','VIEW','MATERIALIZED VIEW','SYNONYM','PACKAGE',"
+                       "'FUNCTION','PROCEDURE','SEQUENCE','TYPE') AND object_name NOT LIKE 'BIN$%'",
+            "tables": "SELECT o.owner, o.object_name, o.object_type, t.num_rows, "
+                      "TO_CHAR(t.last_analyzed, 'YYYY-MM-DD HH24:MI'), c.comments "
+                      "FROM {p}_objects o "
+                      "LEFT JOIN {p}_tables t ON t.owner = o.owner AND t.table_name = o.object_name "
+                      "LEFT JOIN {p}_tab_comments c ON c.owner = o.owner AND c.table_name = o.object_name "
+                      "WHERE o.owner IN ({o}) AND o.object_type IN ('TABLE','VIEW','MATERIALIZED VIEW') "
+                      "AND o.object_name NOT LIKE 'BIN$%' ORDER BY o.object_type",
+            "columns": "SELECT c.owner, c.table_name, c.column_name, c.column_id, c.data_type, "
+                       "c.data_length, c.data_precision, c.data_scale, c.nullable, cc.comments "
+                       "FROM {p}_tab_columns c LEFT JOIN {p}_col_comments cc ON cc.owner = c.owner "
+                       "AND cc.table_name = c.table_name AND cc.column_name = c.column_name "
+                       "WHERE c.owner IN ({o}) AND c.table_name NOT LIKE 'BIN$%'",
+            "constraints": "SELECT owner, constraint_name, constraint_type, table_name, r_owner, "
+                           "r_constraint_name FROM {p}_constraints "
+                           "WHERE (owner IN ({o}) AND constraint_type IN ('P','U','R')) "
+                           "OR (owner, constraint_name) IN (SELECT r_owner, r_constraint_name "
+                           "FROM {p}_constraints WHERE owner IN ({o}) AND constraint_type = 'R')",
+            "cons_columns": "SELECT cc.owner, cc.constraint_name, cc.column_name, cc.position "
+                            "FROM {p}_cons_columns cc JOIN {p}_constraints c ON c.owner = cc.owner "
+                            "AND c.constraint_name = cc.constraint_name "
+                            "WHERE (c.owner IN ({o}) AND c.constraint_type IN ('P','U','R')) "
+                            "OR (c.owner, c.constraint_name) IN (SELECT r_owner, r_constraint_name "
+                            "FROM {p}_constraints WHERE owner IN ({o}) AND constraint_type = 'R')",
+        }
+        out = {}
         with self.connect() as conn, conn.cursor() as cur:
+            cur.arraysize = 5000
+            prefix = "dba"
             try:
-                cur.execute(sql % ("dba_objects", marks), names)
+                cur.execute("SELECT 1 FROM dba_tab_columns WHERE ROWNUM = 1")
+                cur.fetchall()
             except Exception:
-                cur.execute(sql % ("all_objects", marks), names)
-            return [tuple(r) for r in cur]
+                prefix = "all"
+            for name, sql in queries.items():
+                cur.execute(sql.format(p=prefix, o=owners), names)
+                out[name] = [tuple(r) for r in cur]
+        return out
 
     # ------------------------------------------------------------------ cursor cache
     def cursor_info(self, sql_id: str) -> Tuple[List[str], List[tuple], List[tuple]]:
@@ -123,36 +156,87 @@ class Oracle:
             return cols, rows, cur.fetchall()
 
     # ------------------------------------------------------------------ run
-    def run_select(self, sql: str, max_rows: Optional[int] = None):
+    def _prepare_read_only(self, conn, cur):
+        schema = self.settings.current_schema
+        if not _IDENT_RE.match(schema):
+            raise OracleError("Geçersiz şema adı: %s" % schema)
+        conn.rollback()
+        cur.execute("ALTER SESSION SET CURRENT_SCHEMA = " + schema)
+        if self.settings.nls_date_format:
+            cur.execute("ALTER SESSION SET NLS_DATE_FORMAT = '%s'"
+                        % self.settings.nls_date_format.replace("'", "''"))
+        if self.settings.nls_timestamp_format:
+            cur.execute("ALTER SESSION SET NLS_TIMESTAMP_FORMAT = '%s'"
+                        % self.settings.nls_timestamp_format.replace("'", "''"))
+        cur.execute("SET TRANSACTION READ ONLY")
+
+    @staticmethod
+    def _check_select(sql: str) -> str:
+        sql = sql.strip().rstrip(";").strip()
+        if not is_select(sql):
+            raise OracleError("Yalnızca SELECT / WITH sorguları çalıştırılabilir.")
+        return sql
+
+    def run_select(self, sql: str, max_rows: Optional[int] = None, binds: Optional[dict] = None,
+                   timeout_sec: Optional[int] = None):
         """Run a SELECT in a read-only transaction under the Siron schema.
 
         Returns (columns, rows, truncated).
         """
-        sql = sql.strip().rstrip(";").strip()
-        if not is_select(sql):
-            raise OracleError("Yalnızca SELECT / WITH sorguları çalıştırılabilir.")
-        schema = self.settings.current_schema
-        if not _IDENT_RE.match(schema):
-            raise OracleError("Geçersiz şema adı: %s" % schema)
+        sql = self._check_select(sql)
         max_rows = max_rows or self.settings.max_result_rows
         with self.connect() as conn, conn.cursor() as cur:
-            conn.rollback()
-            cur.execute("ALTER SESSION SET CURRENT_SCHEMA = " + schema)
-            if self.settings.nls_date_format:
-                cur.execute("ALTER SESSION SET NLS_DATE_FORMAT = '%s'"
-                            % self.settings.nls_date_format.replace("'", "''"))
-            if self.settings.nls_timestamp_format:
-                cur.execute("ALTER SESSION SET NLS_TIMESTAMP_FORMAT = '%s'"
-                            % self.settings.nls_timestamp_format.replace("'", "''"))
-            cur.execute("SET TRANSACTION READ ONLY")
+            if timeout_sec:
+                conn.call_timeout = timeout_sec * 1000
+            self._prepare_read_only(conn, cur)
             try:
-                cur.execute(TOOL_MARKER + sql)
+                cur.execute(TOOL_MARKER + sql, binds or {})
                 cols = [d[0] for d in cur.description]
                 rows = cur.fetchmany(max_rows + 1)
             finally:
                 conn.rollback()
         truncated = len(rows) > max_rows
         return cols, [tuple(_display(v) for v in r) for r in rows[:max_rows]], truncated
+
+    def stream_select(self, sql: str, max_rows: int, batch: int = 2000):
+        """Yield the column names, then row batches (for full CSV exports)."""
+        sql = self._check_select(sql)
+        with self.connect() as conn, conn.cursor() as cur:
+            conn.call_timeout = 0
+            self._prepare_read_only(conn, cur)
+            cur.arraysize = batch
+            try:
+                cur.execute(TOOL_MARKER + sql)
+                yield [d[0] for d in cur.description]
+                sent = 0
+                while sent < max_rows:
+                    rows = cur.fetchmany(min(batch, max_rows - sent))
+                    if not rows:
+                        break
+                    sent += len(rows)
+                    yield [tuple(_display(v) for v in r) for r in rows]
+            finally:
+                conn.rollback()
+
+    def check_relation(self, child, child_cols, parent, parent_cols, sample: int = 5000) -> Tuple[int, int]:
+        """How many distinct child values (from a sample) exist in the parent: (matched, total)."""
+        for name in (child[1], parent[1]) + tuple(child_cols) + tuple(parent_cols):
+            if '"' in name:
+                raise OracleError("Geçersiz ad: %s" % name)
+        q = lambda key: '"%s"."%s"' % key if key[0] else '"%s"' % key[1]
+        picks = ", ".join('c."%s" AS k%d' % (c, i) for i, c in enumerate(child_cols))
+        keys = ", ".join("k%d" % i for i in range(len(child_cols)))
+        not_null = " AND ".join('c."%s" IS NOT NULL' % c for c in child_cols)
+        cond = " AND ".join('p."%s" = s.k%d' % (p, i) for i, p in enumerate(parent_cols))
+        sql = ("WITH s AS (SELECT DISTINCT {keys} FROM (SELECT {picks} FROM {child} c "
+               "WHERE {nn} AND ROWNUM <= :n)) "
+               "SELECT (SELECT COUNT(*) FROM s), "
+               "(SELECT COUNT(*) FROM s WHERE EXISTS (SELECT 1 FROM {parent} p WHERE {cond})) "
+               "FROM dual").format(keys=keys, picks=picks, child=q(child), nn=not_null,
+                                   parent=q(parent), cond=cond)
+        _, rows, _ = self.run_select(sql, binds={"n": sample}, max_rows=1)
+        total, matched = rows[0]
+        return int(matched or 0), int(total or 0)
 
     # ------------------------------------------------------------------ diagnostics
     def diagnostics(self) -> List[Tuple[str, bool, str]]:

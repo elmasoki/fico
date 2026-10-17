@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<style>{% include "report.css" %}</style>
+</head>
+<body><div class="page">
+<h1>{{ title }}</h1>
+<p class="meta">Oluşturulma: {{ created }}{% for k, v in extra.items() %} · {{ k }}: {{ v }}{% endfor %} · {{ rows|length }} satır{% if truncated %} (ilk satırlar){% endif %}
+  {% if masked %} · <b>veriler maskelenmiştir</b>{% endif %}</p>
+<h3>SQL</h3>
+<pre>{{ format_sql(sql) }}</pre>
+<h3>Sonuç</h3>
+<div style="overflow:auto"><table>
+  <tr>{% for c in cols %}<th>{{ c }}{% if sources and sources[loop.index0] %}<span class="colsrc">{{ sources[loop.index0] }}</span>{% endif %}</th>{% endfor %}</tr>
+  {% for r in rows %}<tr>{% for v in r %}<td>{{ '' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}
+</table></div>
+</div></body></html>

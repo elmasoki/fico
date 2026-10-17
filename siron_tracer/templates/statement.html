@@ -1,15 +1,31 @@
 {% extends "base.html" %}
-{% from "_macros.html" import results_table, table_label %}
+{% from "_macros.html" import results_table, table_label, table_link, col_link, usage_badges, relation_rows with context %}
 {% block title %}{{ st.sql_id }} - Siron SQL Tracer{% endblock %}
 {% block content %}
 <p><a href="{{ url_for('siron.capture', capture_id=capture.id) }}">← {{ capture.name }}</a></p>
 <div class="card">
   <h1>SQL_ID <code>{{ st.sql_id }}</code> <span class="badge">{{ st.action or '' }}</span></h1>
   <p class="small">{{ st.exec_count }} çalışma · {{ st.bind_sets|length }} farklı bind seti ·
-    tablolar: {% for t in st.tables %}<span class="badge">{{ table_label(t) }}</span>{% endfor %}
-    · <a href="?rec={{ execution.record_id }}&cursor=1">Cursor cache (GV$SQL) bilgisini getir</a></p>
-  <h2>Orijinal SQL</h2>
-  <pre>{{ st.sql_text }}</pre>
+    <a href="?rec={{ execution.record_id }}&cursor=1">Cursor cache (GV$SQL) bilgisini getir</a></p>
+  <div class="grid">
+    <div><h2>SQL (biçimlendirilmiş)</h2><pre>{{ format_sql(st.sql_text) }}</pre>
+      <details><summary class="small">Orijinal metin</summary><pre>{{ st.sql_text }}</pre></details></div>
+    <div>
+      <h2>Tablolar</h2>
+      <p>{% for t in st.tables %}{{ table_link(t, 'badge') }} {% endfor %}
+        {% if st.insight.aliases %}<br><span class="small muted">alias: {% for a, k in st.insight.aliases.items() if a != k[1] and '.' not in a %}{{ a }}={{ k[1] }} {% endfor %}</span>{% endif %}</p>
+      <h2>Kolonlar ({{ st.insight.columns|length }})</h2>
+      <table>{% for col, kinds in columns %}
+        <tr><td class="mono">{{ col_link(col) }}</td><td>{{ usage_badges(kinds) }}</td></tr>{% else %}
+        <tr><td class="muted small">Tespit edilemedi.</td></tr>{% endfor %}</table>
+      {% if st.insight.star_tables %}<p class="small warn">SELECT * : {% for k in st.insight.star_tables %}{{ table_label(k) }} {% endfor %}</p>{% endif %}
+      {% if st.insight.joins %}
+      <h2>JOIN koşulları</h2>
+      <ul class="mono" style="padding-left:18px">{% for j in st.insight.joins %}<li>{{ j.left_alias }}.{{ j.left[2] }} = {{ j.right_alias }}.{{ j.right[2] }}
+        <span class="muted">({{ j.left[1] }} ↔ {{ j.right[1] }})</span></li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+  </div>
 </div>
 
 {% if cursor or cursor_error %}
@@ -19,16 +35,13 @@
     {% set cols, rows, binds = cursor %}
     {% if not rows %}<p class="warn">Bu SQL_ID cursor cache'te yok (yaşlanıp çıkmış olabilir veya metin farklı).</p>{% endif %}
     {{ results_table((cols, rows, False)) }}
-    {% if binds %}
-    <h2>Yakalanmış bindler</h2>
-    {{ results_table((['INST','CHILD','POS','AD','TİP','DEĞER','YAKALANMA'], binds, False)) }}
-    {% endif %}
+    {% if binds %}<h2>Yakalanmış bindler</h2>{{ results_table((['INST','CHILD','POS','AD','TİP','DEĞER','YAKALANMA'], binds, False)) }}{% endif %}
   {% endif %}
 </div>
 {% endif %}
 
 <div class="card">
-  <h2>Çalışmalar / bind setleri</h2>
+  <h2 style="margin-top:0">Çalışmalar / bind setleri</h2>
   <div class="scroll" style="max-height:220px">
   <table><tr><th></th><th>Zaman (UTC)</th><th>Session</th><th>Dönüş kodu</th><th>Bindler (audit ham değer)</th></tr>
   {% for e in st.bind_sets %}
@@ -41,7 +54,7 @@
 
 <form method="post" class="card">
   <input type="hidden" name="rec" value="{{ execution.record_id }}">
-  <h2>Bind değerleri</h2>
+  <h2 style="margin-top:0">Bind değerleri</h2>
   {% if slots %}
   <table>
     <tr><th>Yer tutucu</th><th>Değer</th><th>Tip</th></tr>
@@ -62,11 +75,25 @@
   {% if missing %}<p class="warn small">Bazı yer tutucuların değeri yok; çalıştırmadan önce doldurun.</p>{% endif %}
   <textarea class="sql" name="sql_override">{{ literal }}</textarea>
   <input type="hidden" name="literal_orig" value="{{ literal }}">
-  <p class="small muted">Bu alanı elle de düzenleyebilirsiniz. Sorgu, <b>{{ settings.current_schema }}</b> şemasında,
-    salt-okunur transaction içinde ve en fazla {{ settings.max_result_rows }} satır getirecek şekilde çalışır.</p>
-  <button name="do" value="run">Çalıştır</button>
+  <p class="small muted">Elle düzenleyebilirsiniz. Sorgu <b>{{ settings.current_schema }}</b> şemasında, salt-okunur transaction içinde çalışır;
+    ekranda en fazla {{ settings.max_result_rows }} satır gösterilir.</p>
+  <div class="toolbar">
+    <button name="do" value="run">Çalıştır</button>
+    <button name="do" value="csv" class="secondary" title="Satır sınırı olmadan (en fazla {{ settings.max_export_rows|thousands }})">Tüm sonucu CSV indir</button>
+    <button name="do" value="html" class="secondary">Sonucu HTML indir</button>
+    <label style="margin:0 0 9px"><input type="checkbox" name="mask" value="1"> HTML'de veriyi maskele</label>
+  </div>
+  <details style="margin-top:10px"><summary class="small">Rapora ekle</summary>
+    <div class="row"><div><label>Başlık</label><input type="text" name="title" value="{{ capture.name }} - {{ st.sql_id }}"></div>
+      <div><label>Not</label><input type="text" name="note"></div></div>
+    <button name="do" value="snapshot" class="secondary">Çalıştır ve sonucu rapora ekle (ilk {{ settings.snapshot_rows }} satır)</button>
+  </details>
 </form>
 
 {% if error %}<div class="card"><p class="err">{{ error }}</p></div>{% endif %}
-{% if result %}<div class="card"><h2>Sonuç</h2>{{ results_table(result) }}</div>{% endif %}
+{% if result %}<div class="card"><h2 style="margin-top:0">Sonuç</h2>
+  <p class="small muted">Başlıkların altındaki mavi yazı, sonuç kolonunun geldiği tablo.kolon'dur.</p>
+  {{ results_table(result, sources) }}</div>{% endif %}
+
+{% if relations %}<div class="card"><h2 style="margin-top:0">Bu SQL'in kurduğu ilişkiler</h2>{{ relation_rows(relations) }}</div>{% endif %}
 {% endblock %}
