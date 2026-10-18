@@ -20,6 +20,8 @@ JOB_KINDS = {
     "tablesearch": "Değer arama",
     "profile": "Veri profili",
     "extract": "Veri çıkarma",
+    "trace": "Kayıt izi",
+    "notebook": "Sorgu doğrulama",
 }
 
 

@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty with context %}
+{% macro status(s) %}{% if s == 'pass' %}<span class="badge ok">{{ icon('check') }}Geçti</span>{% elif s == 'fail' %}<span class="badge err">{{ icon('x') }}Kaldı</span>{% elif s == 'error' %}<span class="badge warn">{{ icon('alert') }}Hata</span>{% else %}<span class="badge">Çalıştırılmadı</span>{% endif %}{% endmacro %}
+{% macro syntax_help() %}<details class="xs muted mt8"><summary>Beklenti nasıl yazılır?</summary>
+<table class="data compact mt8"><tbody>
+<tr><td class="mono">satır = 3</td><td>sonuç 3 satır (ayrıca &gt;=, &lt;=, !=; <span class="mono">satır = 10000+</span> en az)</td></tr>
+<tr><td class="mono">FULL_NAME = AHMET YILMAZ</td><td>en az bir satırda bu değer var</td></tr>
+<tr><td class="mono">IBAN ~ TR00</td><td>en az bir satırda bu metin geçiyor (büyük/küçük harf fark etmez)</td></tr>
+<tr><td class="mono">RISK_CLASS != H</td><td>hiçbir satırda bu değer yok</td></tr>
+<tr><td class="mono">IBAN dolu</td><td>bir satırda değer var (<span class="mono">boş</span>: yok)</td></tr>
+<tr><td class="mono">tüm STATUS = OPEN</td><td>her satırda bu değer</td></tr>
+</tbody></table><p class="mb0 mt8">Sayılar sayı olarak, tarihler başlangıçlarıyla karşılaştırılır (<span class="mono">2026-09-01</span> = <span class="mono">2026-09-01 00:00:00</span>). # ile başlayan satırlar not sayılır.</p></details>{% endmacro %}
+{% block page_title %}{{ query.name }}{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.notebook') }}">Sorgu defteri</a>{{ icon('chev') }}<b>{{ query.name }}</b>{% endblock %}
+{% block eyebrow %}<div class="eyebrow">{{ icon('flask') }}Sorgu defteri{% if query.target %} · hedef <b>{{ query.target }}</b>{% endif %} · {{ query.versions }} sürüm · şema {{ schema }}</div>{% endblock %}
+{% block subtitle %}{% if query.description %}<p class="sub">{{ query.description }}</p>{% endif %}{% endblock %}
+{% block actions %}
+<form method="post" class="inline"><button name="do" value="run_all" class="btn-primary" {% if not cases %}disabled{% endif %} data-busy="Çalışıyor">{{ icon('play') }}Senaryoları çalıştır</button></form>
+<a class="btn btn-secondary" href="{{ url_for('siron.notebook_report', query_id=query.id) }}">{{ icon('download') }}Rapor</a>
+{% endblock %}
+{% block content %}
+{% if cases %}{% set p = cases|selectattr('last_status', 'equalto', 'pass')|list|length %}
+<div class="callout {{ 'ok' if p == cases|length else 'warn' if cases|selectattr('last_status')|list else '' }}">{{ icon('shield') }}<div><b>{{ p }} / {{ cases|length }}</b> senaryo geçti.
+  {% if p < cases|length %}{% set nr = cases|rejectattr('last_status')|list|length %}{% if nr %}{{ nr }} senaryo henüz çalıştırılmadı (SQL değiştiğinde sonuçlar sıfırlanmaz; yeniden çalıştırın).{% endif %}{% endif %}</div></div>{% endif %}
+
+<div class="grid g2" style="align-items:start">
+  <form method="post" class="card" style="margin:0" id="nbsql">
+    <div class="card-head"><h2>{{ icon('code') }}Sorgu</h2><span class="meta">her kayıtta değişirse yeni sürüm</span>
+      <div class="tools"><button type="button" class="btn-ghost btn-sm" onclick="navigator.clipboard.writeText(document.querySelector('#nbsql textarea[name=sql]').value)">{{ icon('copy') }}Kopyala</button></div></div>
+    <div class="card-body">
+      <div class="row">
+        <div class="field" style="flex:2"><label>Ad</label><input type="text" name="name" value="{{ query.name }}" required></div>
+        <div class="field"><label>Hedef</label><input type="text" name="target" value="{{ query.target or '' }}" placeholder="ör. CUSTOMER"></div>
+        <div class="field" style="flex:.8"><label>Şema</label><input type="text" name="schema" class="mono" value="{{ query.schema_name or '' }}" placeholder="{{ settings.current_schema }}"></div>
+      </div>
+      <div class="field"><label>Açıklama</label><input type="text" name="description" value="{{ query.description or '' }}"></div>
+      <textarea class="sql" name="sql" spellcheck="false" style="min-height:280px">{{ query.sql_text }}</textarea>
+      <div class="flex xs muted mt8">{% if placeholders %}Bind'ler: {% for p in placeholders %}<code>:{{ p }}</code> {% endfor %}{% else %}Bind yok: sorgu tüm kayıtları getirir, senaryolarda yalnız sonuç kontrol edilir.{% endif %}</div>
+      <div class="field mb0 mt16"><label>Değişiklik notu <span class="muted">(sürüm geçmişinde görünür)</span></label><input type="text" name="note" placeholder="ör. Kapalı hesaplar hariç tutuldu"></div>
+    </div>
+    <div class="card-foot"><button name="do" value="save" class="btn-primary">{{ icon('check') }}Kaydet</button>
+      <a class="btn btn-ghost" href="{{ url_for('siron.sql_runner', sql=query.sql_text, schema=schema) }}">{{ icon('code') }}Konsolda aç</a>
+      <span class="spacer"></span>
+      <button name="do" value="delete" class="btn-danger" formnovalidate onclick="return confirm('Sorgu, sürümleri ve senaryolarıyla silinsin mi?')">{{ icon('trash') }}Sil</button></div>
+  </form>
+
+  <div>
+  <form method="post" class="card" style="margin:0 0 16px">
+    <div class="card-head"><h2>{{ icon('play') }}Dene</h2><span class="meta">kayıtlı sorguyu bu değerlerle çalıştırır</span></div>
+    <div class="card-body">
+      <textarea name="try_binds" class="mono" spellcheck="false" rows="{{ [placeholders|length, 1]|max + 1 }}" placeholder="{% for p in placeholders %}{{ p|lower }} = &#10;{% endfor %}">{{ form.get('try_binds', '') if form else '' }}{% if not form %}{% for p in placeholders %}{{ p|lower }} =
+{% endfor %}{% endif %}</textarea>
+    </div>
+    <div class="card-foot"><button name="do" value="preview" class="btn-secondary" data-busy="Çalışıyor">{{ icon('play') }}Çalıştır</button><span class="xs muted">en fazla 1.000 satır · salt-okunur</span></div>
+  </form>
+
+  <div class="card" style="margin:0">
+    <div class="card-head"><h2>{{ icon('clock') }}Sürüm geçmişi</h2><span class="meta">{{ versions|length }}</span></div>
+    {% if versions %}<ul class="list">{% for v in versions %}<li class="nb-ver">
+      <span class="grow"><span class="t">{% if loop.first %}<span class="badge info">güncel</span> {% endif %}{{ v.note or 'Not yok' }}</span>
+        <span class="s">{{ v.created_at|short_ts }}{% if v.author %} · {{ v.author }}{% endif %}</span>
+        {% if diffs.get(v.id) %}<details class="mt8"><summary class="xs">Önceki sürümle farkı</summary>
+          <pre class="nb-diff">{% for k, line in diffs[v.id] %}<span class="d{{ {'+': 'add', '-': 'del'}.get(k, 'same') }}">{{ k }} {{ line }}</span>{% endfor %}</pre></details>{% endif %}</span>
+      {% if not loop.first %}<form method="post" class="inline"><input type="hidden" name="version_id" value="{{ v.id }}"><button name="do" value="restore" class="btn-ghost btn-sm" onclick="return confirm('Bu sürüm geri yüklensin mi? Mevcut SQL yeni bir sürüm olarak korunur.')">{{ icon('refresh') }}Geri yükle</button></form>{% endif %}
+    </li>{% endfor %}</ul>
+    {% else %}{{ empty('clock', 'Henüz sürüm yok', '<span class="small">SQL yazıp kaydedin.</span>') }}{% endif %}
+  </div>
+  </div>
+</div>
+
+{% if error %}<div class="callout err mt16">{{ icon('alert') }}<div>{{ error }}</div></div>{% endif %}
+{% if preview %}{% from "_macros.html" import results_table %}<div class="card mt16"><div class="card-head"><h2>{{ icon('table') }}Sonuç</h2></div>{{ results_table(preview) }}</div>{% endif %}
+
+<div class="card mt16" id="cases">
+  <div class="card-head"><h2>{{ icon('shield') }}Doğrulama senaryoları</h2><span class="meta">Siron ekranındaki bir kayıt: bind değerleri + ekranda görünenler</span></div>
+  {% for c in cases %}{% set d = c.last_detail %}
+  <details class="nb-case st-{{ c.last_status or 'none' }}" id="case-{{ c.id }}" {% if c.id == open_case or c.last_status in ('fail', 'error') %}open{% endif %}>
+    <summary>{{ status(c.last_status) }}<b>{{ c.name }}</b>
+      <span class="xs muted mono">{{ (c.binds or '')|replace('\n', ' · ')|truncate(70) }}</span><span class="spacer"></span>
+      {% if c.last_run %}<span class="xs muted">{{ c.last_run|short_ts }}{% if d and d.rows is not none and not d.error %} · {{ d.rows }} satır{% endif %}</span>{% endif %}</summary>
+    <form method="post" class="nb-case-body">
+      <input type="hidden" name="case_id" value="{{ c.id }}">
+      <div class="grid g2" style="align-items:start">
+        <div>
+          <div class="row"><div class="field" style="flex:2"><label>Senaryo</label><input type="text" name="case_name" value="{{ c.name }}" required></div>
+            <div class="field" style="flex:2"><label>Not</label><input type="text" name="case_note" value="{{ c.note or '' }}" placeholder="ör. Ekran: Müşteri kartı › Genel"></div></div>
+          <div class="field"><label>Bind değerleri</label><textarea name="case_binds" class="mono" rows="3" spellcheck="false">{{ c.binds or '' }}</textarea></div>
+          <div class="field mb0"><label>Beklenen <span class="muted">(Siron ekranında görünen)</span></label><textarea name="case_expect" class="mono" rows="5" spellcheck="false">{{ c.expect or '' }}</textarea></div>
+          {{ syntax_help() }}
+        </div>
+        <div>
+          {% if d %}
+            {% if d.error %}<div class="callout err mb0">{{ icon('alert') }}<div>{{ d.error }}</div></div>
+            {% else %}<div class="cond-list">{% for ch in d.checks %}<div class="cond {{ 'kept' if ch.ok else 'removed nb-fail' }}">{{ icon('check' if ch.ok else 'x') }}<code>{{ ch.line }}</code><span class="spacer"></span><span class="xs">{{ ch.detail }}</span></div>{% endfor %}</div>
+              {% if d.columns %}<div class="table-wrap mt8" style="max-height:220px"><table class="data compact"><thead><tr>{% for col in d.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+                <tbody>{% for r in d.sample[:10] %}<tr>{% for v in r %}<td class="small nowrap">{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+                {% if d.rows > 10 %}<p class="xs muted mt8 mb0">{{ d.rows }} satırın ilk 10'u</p>{% endif %}{% endif %}
+            {% endif %}
+          {% else %}<p class="muted small">Henüz çalıştırılmadı.</p>{% endif %}
+        </div>
+      </div>
+      <div class="toolbar mt16">
+        <button name="do" value="case_run" class="btn-primary btn-sm" data-busy="Çalışıyor">{{ icon('play') }}Çalıştır</button>
+        <button name="do" value="case_save" class="btn-secondary btn-sm">{{ icon('check') }}Kaydet</button>
+        <button name="do" value="case_save" class="btn-secondary btn-sm" onclick="this.form.and_run.value='1'">{{ icon('zap') }}Kaydet ve çalıştır</button><input type="hidden" name="and_run" value="">
+        <span class="spacer"></span>
+        <button name="do" value="case_delete" class="btn-ghost btn-sm" formnovalidate onclick="return confirm('Senaryo silinsin mi?')">{{ icon('trash') }}Sil</button>
+      </div>
+    </form>
+  </details>
+  {% else %}<div class="card-body"><p class="muted small mb0">Henüz senaryo yok. Siron'da bir kaydı açın; ekrandaki değerleri aşağıya beklenti olarak yazın.</p></div>{% endfor %}
+
+  <form method="post" class="nb-new" id="case-new">
+    <h3 class="mb8">{{ icon('plus') }}Yeni senaryo</h3>
+    <div class="grid g2" style="align-items:start">
+      <div>
+        <div class="row"><div class="field" style="flex:2"><label>Senaryo</label><input type="text" name="case_name" placeholder="ör. Bireysel müşteri 104233" value="{{ 'Ekran: ' ~ suggestion.ref.screen_name if suggestion else '' }}"></div>
+          <div class="field" style="flex:2"><label>Not</label><input type="text" name="case_note" value="{{ (suggestion.ref.screen_module ~ ' › ' if suggestion and suggestion.ref.screen_module) ~ (suggestion.ref.screen_name ~ ' · ' ~ suggestion.ref.sql_id if suggestion else '') }}"></div></div>
+        <div class="field"><label>Bind değerleri</label><textarea name="case_binds" class="mono" rows="3" spellcheck="false">{% for p in placeholders %}{{ p|lower }} = {% if suggestion and suggestion.binds|length == 1 and placeholders|length == 1 %}{{ suggestion.binds[0][1] }}{% endif %}
+{% endfor %}</textarea></div>
+        <div class="field mb0"><label>Beklenen</label><textarea name="case_expect" class="mono" rows="5" spellcheck="false" placeholder="satır = 1&#10;FULL_NAME = AHMET YILMAZ&#10;RISK_CLASS = H">{{ suggestion.expect if suggestion else '' }}</textarea></div>
+        {{ syntax_help() }}
+      </div>
+      <div class="nb-suggest">
+        <h4 class="mt0 mb8">{{ icon('zap') }}Beklentiyi ekran SQL'inden öner</h4>
+        <p class="xs muted">Envantere bağlanmış bir ekran SQL'i seçin: Siron'un kaydettiği bind değerleriyle yeniden çalıştırılır, ekranın gösterdiği satır beklenti olarak önerilir. Kolon adlarını kendi sorgunuzun kolonlarına göre düzenleyin.</p>
+        {% if refs %}<div class="row"><div class="field mb0" style="flex:1"><select name="ref">{% for r in refs %}<option value="{{ r.capture_id }}:{{ r.sql_id }}" {% if suggestion and suggestion.ref.id == r.id %}selected{% endif %}>{% if r.screen_module %}{{ r.screen_module }} › {% endif %}{{ r.screen_name }} · {{ r.note or r.sql_id }} ({{ r.capture_name }})</option>{% endfor %}</select></div>
+          <button name="do" value="suggest" class="btn-secondary" formnovalidate data-busy="Çalışıyor">{{ icon('zap') }}Öner</button></div>
+        {% else %}<p class="xs muted mb0">Envanterde SQL bağlanmış ekran yok. Bir yakalamanın SQL'ini ekran sayfasından envantere bağlayın.</p>{% endif %}
+        {% if suggestion %}<div class="callout mt8 mb0">{{ icon('info') }}<div class="small">Siron bu SQL'i <b>{{ suggestion.binds|map('last')|join(', ') or 'bind olmadan' }}</b> ile çalıştırdı; {{ suggestion.rows|length }} satır döndü. Senaryonun bind değerlerini de aynı kayda göre yazın.</div></div>
+          {% if suggestion.rows %}<div class="table-wrap mt8" style="max-height:180px"><table class="data compact"><thead><tr>{% for col in suggestion.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+          <tbody>{% for r in suggestion.rows %}<tr>{% for v in r %}<td class="small nowrap">{{ '' if v is none else v }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% endif %}{% endif %}
+      </div>
+    </div>
+    <div class="toolbar mt16"><button name="do" value="case_add" class="btn-primary" onclick="this.form.and_run.value='1'">{{ icon('play') }}Ekle ve çalıştır</button>
+      <button name="do" value="case_add" class="btn-secondary">{{ icon('plus') }}Ekle</button><input type="hidden" name="and_run" value=""></div>
+  </form>
+</div>
+{% endblock %}

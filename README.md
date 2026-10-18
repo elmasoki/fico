@@ -22,6 +22,8 @@ eşleme kararlarını yönetir ve taşınacak veriyi paketler.
 | Yakalamama başkasının SQL'i karıştı mı? | **Kaynak kontrolü** — her yakalamada SQL'leri çalıştıran OS kullanıcısı / makine / program / client id dökümü; birden fazla kaynak varsa uyarı, sizin olmayan kaynakları analizden çıkarma; kayıt sırasında canlı uyarı; kayıttan önce "Şu an Siron'u kullanan var mı?" kontrolü (son 5 dakika) |
 | Hangi tıklama hangi SQL'i çalıştırdı? | **Zaman akışı** — yakalamadaki SQL'ler çalışma sırasıyla, duraklamalara göre **adımlara** bölünür (eşik ayarlanabilir); her adımın süresi, tabloları ve bind değerleri görünür. **Yakalama karşılaştırma** — iki yakalamada ortak ve yalnız birinde görülen tablolar, SQL kalıpları, kolonlar ("Detay" düğmesine basınca ne değişti?) |
 | Ekranda gördüğüm değer hangi sorguya gitti? | **Bind değerinde arama** — genel arama ve "Ekrandaki değeri bul", değeri audit'teki bind'lerde de arar: arama kriteri olarak girilen müşteri no'nun hangi SQL'e parametre olarak gittiği bulunur |
+| Bu müşterinin verisi başka hangi tablolarda var? | **Kayıt izi** — bildiğiniz bir değerle başlayın (ör. ekranda gördüğünüz müşteri no): değer şemadaki anahtar adayı kolonlarda (PK/UK/FK, indeksli, kimlik adlı; büyük tablolarda yalnız indeksli olanlar) aranır, bulunan satırların anahtarlarıyla ilişkili tablolara adım adım geçilir (müşteri → hesaplar → hareketler). Her tablo için yol (`CUSTOMER.ID → ACCOUNT.CUST_ID · FK`), satır sayısı, örnek satırlar ve o tabloya giden hazır JOIN sorgusu; **hiçbir ekran yakalamasında görünmeyen** tablolar ayrıca işaretlenir. Arka plan işi, salt-okunur |
+| Elle yazdığımız taşıma sorgusu doğru mu? | **Sorgu defteri** — taşıma sorgularının ortak defteri: her değişiklik yazan kişi ve notuyla **sürüm** olarak saklanır (fark görünümü, geri yükleme). Her sorguya **doğrulama senaryoları** eklenir: Siron ekranındaki bir kaydın bind değerleri ve ekranda görünen değerler, düz metin kurallarla (`satır = 3`, `FULL_NAME = AHMET YILMAZ`, `IBAN ~ TR00`, `RISK != H`, `IBAN dolu`, `tüm STATUS = OPEN`). Senaryolar tek tek, sorgu bazında veya tüm defter için arka planda çalıştırılır; kalan satırlar sonuçtaki gerçek değerleri gösterir. Beklentiler envantere bağlı ekran SQL'inden önerilebilir (Siron'un kaydettiği bind ile yeniden çalıştırılır). İş birimi için tek dosyalık **doğrulama raporu**. Kayıt izi sonucundan, taşıma sorgusu sayfasından ve SQL konsolundan deftere tek tıkla aktarılır |
 | Bu ekranın verisi hangi sorgudan geliyor? | **Ekran envanterine SQL bağlama** — SQL detayından veya zaman akışında toplu seçimle bir SQL'i ekrana bağlayın ve "ne getiriyor" notu düşün; envanterde ve **ekran sayfasında** SQL_ID, yakalama adı ve yakalama tarihiyle listelenir, Excel'e de çıkar. Bindleri yerleştirilmiş SQL'de değerler **vurgulanır** ve bind satırıyla eşleşir |
 | Ekrandaki alan hangi kolondan geliyor? | **Kolon analizi** (gösterim / filtre-join / sıralama / yazma) ve **Ekrandaki değeri bul** — ekranın SQL'leri bindleriyle yeniden çalıştırılır, değer sonuçta bulunur ve `TABLO.KOLON`'a eşlenir |
 | Paket / view arkasında ne var? | **Bağımlılık analizi** (`DBA_DEPENDENCIES`) — paket veya view üzerinden erişilen tablolar "dolaylı" olarak gösterilir |
@@ -95,7 +97,12 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
    hedef alanları ve hassasiyeti girin — veya **Excel eşleme** ile analistlere dağıtın.
 9. **İlişkiler** → **Tümünü veriyle doğrula**; **ER diyagramı** ile modeli gözden geçirin.
 10. **Kapsam** sayfasında açık kalanları kapatın (yakalanmayan ekranlar, görünmeyen tablolar).
-11. Ekranın verisini getiren SQL'lerden **taşıma sorgusu** üretin (ekran sayfasında tek tıkla); **Taşıma paketi**: filtreleri girin, paketi indirin veya veriyi çıkarın. **Raporlar**'dan dokümanı üretin.
+11. Bir test müşterisinin numarasıyla **Kayıt izi** çalıştırın: verisinin bulunduğu tüm tabloları, özellikle hiçbir ekranda
+    görünmeyenleri kontrol edin.
+12. Ekranın verisini getiren SQL'lerden **taşıma sorgusu** üretin (ekran sayfasında tek tıkla); **Taşıma paketi**: filtreleri girin, paketi indirin veya veriyi çıkarın.
+13. Taşımayı yapacak sorguları **Sorgu defteri**'nde toplayın; her biri için Siron ekranından birkaç kayıt seçip
+    **doğrulama senaryosu** yazın, sorgu her değiştiğinde senaryoları yeniden çalıştırın. **Doğrulama raporu**nu ve
+    **Raporlar**'daki dokümanı iş birimiyle paylaşın.
 
 ## Ekranlar
 
@@ -121,6 +128,9 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
 | ![Bind değerinde arama](docs/screenshots/32_bind_arama.png) | ![Kayıt işaretleri ve canlı kaynak uyarısı](docs/screenshots/33_kayit_isaretleri.png) |
 | ![Kaynak karışması ve ayıklama](docs/screenshots/34_kaynak_karismasi.png) | ![İşaretli zaman akışı](docs/screenshots/35_zaman_akisi_isaretli.png) |
 | ![Taşıma sorgusu üretme](docs/screenshots/36_tasima_sorgusu.png) | ![Taşıma paketinde ekran sorguları](docs/screenshots/37_tasima_ekran_sorgulari.png) |
+| ![Kayıt izi](docs/screenshots/38_kayit_izi.png) | ![Kayıt izi sonucu](docs/screenshots/39_kayit_izi_sonuc.png) |
+| ![Sorgu defteri](docs/screenshots/40_sorgu_defteri.png) | ![Sorgu, sürümler ve doğrulama senaryoları](docs/screenshots/41_sorgu_defteri_sorgu.png) |
+| ![Doğrulama raporu](docs/screenshots/42_dogrulama_raporu.png) | |
 
 ## Araştırma bölümü
 
@@ -159,6 +169,11 @@ Varsayılan `config.ini → audit_source`; yakalama formunun gelişmiş bölüm�
 - **Profil** büyük tablolarda `SAMPLE` kullanır (`profile_sample_rows`); kesin `COUNT(DISTINCT)` hesaplar.
 - **Taşıma sırası** ilişkilere göre topolojik sıralanır; döngüsel bağımlılıklar işaretlenir. PK ve taşınan
   tablolar arası ilişki kolonları, açıkça "Gereksiz" denmedikçe her zaman pakete girer.
+- **Kayıt izi** her adımda en fazla 200 farklı anahtar değeri taşır, satır sayılarını 10.000'de keser ve yalnız tek kolonlu
+  ilişkileri izler (güven ≥50). İndeks bilgisi veri sözlüğüyle yüklenir (`DBA_IND_COLUMNS`, ilk kolon); indekssiz büyük
+  tablolar istenmedikçe taranmaz.
+- **Sorgu defteri** senaryoları en fazla 1.000 satır getirir; yalnız SQL'de geçen bind'ler gönderilir (`:1, :2` sıralı,
+  adlı bind'ler büyük/küçük harf duyarsız). Sonuçlar senaryonun son çalıştırmasıdır; SQL değişince yeniden çalıştırın.
 - **Yerel depo** `data/siron_tracer.db` (SQLite, WAL). Audit temizlense de analiz kaybolmaz; yedeklemek için dosyayı kopyalayın.
 - **Güvenlik:** varsayılan olarak yalnız `127.0.0.1`; form isteklerinde CSRF koruması; oturum çerezi `SameSite=Strict`.
   Kimlik doğrulaması yoktur — ağa açmayın.

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, table_link, module_chip, empty with context %}
+{% block page_title %}«{{ result.value }}» kayıt izi{% endblock %}
+{% block crumbs %}<a href="{{ url_for('siron.record_trace') }}">Kayıt izi</a>{{ icon('chev') }}<b class="mono">{{ result.value }}</b>{% endblock %}
+{% block subtitle %}<p class="sub">{{ job.finished_at|short_ts }} · derinlik {{ result.depth }} · {{ result.searched }} anahtar kolonda arandı. Satır sayıları {{ '10.000' }}'de kesilir; örnek satırlar ilk 10 kayıttır.</p>{% endblock %}
+{% block actions %}<a class="btn btn-secondary" href="{{ url_for('siron.record_trace') }}">{{ icon('target') }}Yeni iz</a>{% endblock %}
+{% block content %}
+{% set uncaptured = hits|rejectattr('captured')|list %}
+<div class="mini-stats mb16">
+  <div class="mini-stat"><b>{{ hits|length }}</b><span>tabloda bulundu</span></div>
+  <div class="mini-stat"><b>{{ by_depth[0]|length }}</b><span>değerin doğrudan geçtiği</span></div>
+  <div class="mini-stat"><b>{{ uncaptured|length }}</b><span>yakalamalarda görülmeyen</span></div>
+  <div class="mini-stat"><b>{{ result.skipped_count }}</b><span>atlanan kolon</span></div>
+</div>
+{% if uncaptured %}<div class="callout warn">{{ icon('eyeoff') }}<div><b>{{ uncaptured|length }} tablo hiçbir ekran yakalamasında görünmedi:</b>
+  {% for h in uncaptured[:12] %}<span class="badge outline">{{ h.name }}</span>{% endfor %}{% if uncaptured|length > 12 %} +{{ uncaptured|length - 12 }}{% endif %}
+  <div class="xs muted mt8">Bu tablolarda bu kayda ait veri var ama yakalanan ekranlar onları kullanmadı: henüz yakalanmamış bir ekran, batch işi ya da kullanılmayan bir modül olabilir.</div></div></div>{% endif %}
+{% if not hits %}<div class="card">{{ empty('search', 'Değer hiçbir anahtar kolonda bulunamadı', '<span class="small">Değeri ekrandaki gibi değil, veritabanındaki ham haliyle deneyin; ya da başlangıç kolonunu belirtin.</span>') }}</div>{% endif %}
+
+{% for level in by_depth %}{% if level %}
+<h2 class="section-title">{% if loop.index0 == 0 %}{{ icon('target') }}Değerin doğrudan geçtiği tablolar{% else %}{{ icon('link') }}{{ loop.index0 }} adım ötede{% endif %} <span class="muted small">({{ level|length }})</span></h2>
+{% for h in level %}
+<details class="card trace-hit">
+  <summary class="trace-head">
+    <span class="trace-name">{{ table_link((h.owner or None, h.name), 'cell-title') }}
+      {% if h.research %}{{ module_chip(h.research.module) }}{% endif %}
+      {% if not h.captured %}<span class="badge warn" title="Hiçbir ekran yakalamasında görünmedi">yakalamada yok</span>{% endif %}</span>
+    <span class="trace-path">{% if h.path %}{% for p in h.path %}<span class="hop"><span class="mono">{{ p.from.split('.')[-1] }}.{{ p.from_col }}</span>{{ icon('chev') }}<span class="mono">{{ p.to.split('.')[-1] }}.{{ p.to_col }}</span><span class="badge {{ 'ok' if p.how == 'FK' else 'info' if p.how == 'SQL' else '' }}">{{ p.how }}</span></span>{% endfor %}
+      {% else %}<span class="small">eşleşen kolon <b class="mono">{{ h.column }}</b></span>{% endif %}</span>
+    <span class="trace-count tnum"><b>{{ h.count|thousands }}{% if h.capped %}+{% endif %}</b> satır</span>
+  </summary>
+  <div class="trace-body">
+    <div class="toolbar mb8">
+      <form method="post" action="{{ url_for('siron.notebook_new') }}" class="inline">
+        <input type="hidden" name="name" value="{{ h.name }} · {{ result.value }} izi"><input type="hidden" name="sql" value="{{ trace_sql(h) }}">
+        <input type="hidden" name="case_name" value="{{ result.value }}"><input type="hidden" name="case_binds" value="deger = {{ result.value }}">
+        <input type="hidden" name="case_expect" value="satır = {{ h.count }}{% if h.capped %}+{% endif %}">
+        <button class="btn-primary btn-sm">{{ icon('flask') }}Sorgu defterinde başlat</button></form>
+      <a class="btn btn-secondary btn-sm" href="{{ url_for('siron.sql_runner', sql=trace_sql(h)|replace(':deger', "'" ~ result.value|replace("'", "''") ~ "'")) }}">{{ icon('code') }}SQL konsolunda aç</a>
+      <span class="xs muted mono">{{ trace_sql(h)|replace('\n', ' ') }}</span>
+    </div>
+    {% if h.rows %}<div class="table-wrap" style="max-height:320px"><table><thead><tr>{% for c in h.columns %}<th class="{{ 'hl' if c == h.column }}">{{ c }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for r in h.rows %}<tr>{% for v in r %}<td class="small nowrap {{ 'hl' if h.columns[loop.index0] == h.column }}">{{ v if v is not none else '' }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% endif %}
+  </div>
+</details>
+{% endfor %}
+{% endif %}{% endfor %}
+
+{% if result.skipped or result.errors %}
+<details class="card mt16"><summary class="card-head" style="cursor:pointer"><h2>{{ icon('info') }}Atlananlar ve hatalar</h2><span class="meta">{{ result.skipped_count }} atlanan · {{ result.errors|length }} hata</span></summary>
+  <div class="card-body small">
+    {% for what, why in result.skipped[:50] %}<div><span class="mono">{{ what }}</span> — {{ why }}</div>{% endfor %}
+    {% for what, why in result.errors %}<div class="err"><span class="mono">{{ what }}</span> — {{ why }}</div>{% endfor %}
+  </div></details>
+{% endif %}
+{% endblock %}

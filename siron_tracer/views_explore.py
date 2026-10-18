@@ -8,14 +8,17 @@ from datetime import timedelta
 
 from flask import abort, flash, jsonify, redirect, render_template, request, url_for
 
+from . import knowledge
 from .generalize import Generalized, generalize
 from .sessions import breakdown, filter_records
 from .sqlutil import format_sql
 from .sources import AuditFilter
 from .store import fmt_ts, parse_ts
 from .timeline import build_steps
+from .trace import trace
 from .views import bp, stream_csv
-from .web import capture_analysis, capture_or_404, capture_schema, ctx, log
+from .web import (capture_analysis, capture_or_404, capture_schema, ctx, ext, get_catalog, log, parse_key,
+                  project_analysis, schema_relations)
 
 
 def _wants_json() -> bool:
@@ -286,3 +289,66 @@ def screen_extract_all(screen_id):
     flash("%d ekran sorgusu taşıma paketine eklendi%s." % (added, ", %d SELECT olmayan atlandı" % skipped if skipped else ""),
           "ok" if added else "error")
     return redirect(url_for(".screen_page", screen_id=screen_id) + "#extract")
+
+
+# --------------------------------------------------------------------------- record trace
+
+@bp.route("/trace", methods=["GET", "POST"])
+def record_trace():
+    """Find every table that holds data about one known record (customer, account ...)."""
+    settings, oracle, store = ctx()
+    catalog = get_catalog()
+    if request.method == "POST":
+        value = (request.form.get("value") or "").strip()
+        if not value:
+            flash("İzlenecek değeri yazın (ör. bir müşteri numarası).", "error")
+            return redirect(url_for(".record_trace"))
+        if not catalog:
+            flash("Önce veri sözlüğünü yükleyin.", "error")
+            return redirect(url_for(".record_trace"))
+        depth = max(0, min(request.form.get("depth", 2, type=int), 3))
+        include_big = bool(request.form.get("include_big"))
+        start = (request.form.get("start") or "").strip().upper()
+        only = None
+        if start:
+            owner_table, _, col = start.rpartition(".")
+            owner, name = parse_key(owner_table) if owner_table else (None, "")
+            key = catalog.resolve(owner, name, settings.current_schema) if name else None
+            if not key or not col or not catalog.column(key, col):
+                flash("Başlangıç kolonu TABLO.KOLON biçiminde olmalı ve veri sözlüğünde bulunmalı.", "error")
+                return redirect(url_for(".record_trace"))
+            only = [(key, col)]
+        relations = schema_relations(50)
+        captured = set(project_analysis().tables)
+
+        def work(job):
+            result = trace(lambda sql, binds, n: oracle.run_select(sql, max_rows=n, binds=binds, timeout_sec=60)[:2],
+                           catalog, relations, value, depth=depth, big_rows=settings.big_table_rows,
+                           include_big=include_big, only=only, progress=lambda p, m: job.progress(p, m))
+            for h in result["hits"]:
+                h["captured"] = (h["owner"], h["name"]) in captured or (None, h["name"]) in captured
+            store.log("trace", "Kayıt izi '%s': %d tablo" % (value, len(result["hits"])))
+            job.message = "%d tabloda bulundu (%d kolon arandı)" % (len(result["hits"]), result["searched"])
+            return result
+
+        job_id = ext()["jobs"].submit("trace", "Kayıt izi: %s" % value, work, {"value": value, "depth": depth})
+        return redirect(url_for(".job", job_id=job_id))
+    runs = store.list_jobs(30, "trace")
+    return render_template("trace.html", runs=runs, has_catalog=bool(catalog),
+                           indexed=bool(catalog and catalog.indexed))
+
+
+@bp.route("/trace/<int:job_id>")
+def record_trace_result(job_id):
+    store = ctx()[2]
+    job = store.get_job(job_id)
+    if not job or job["kind"] != "trace":
+        abort(404)
+    if job["status"] != "done":
+        return redirect(url_for(".job", job_id=job_id))
+    result = job["result"] or {}
+    hits = result.get("hits", [])
+    for h in hits:
+        h["research"] = knowledge.classify(h["name"])
+    return render_template("trace_result.html", job=job, result=result, hits=hits,
+                           by_depth=[[h for h in hits if h["depth"] == d] for d in range(result.get("depth", 2) + 1)])

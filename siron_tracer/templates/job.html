@@ -39,6 +39,10 @@
   <ul class="list">{% for t in r.tables %}{% set p = t.split('.') %}<li><a class="t" href="{{ url_for('siron.table', owner=p[0] if p|length > 1 else '-', name=p[-1]) }}">{{ t }}</a></li>{% endfor %}</ul></div>
 {% elif r and job.kind == 'catalog' %}
 <div class="grid g4">{% for k, v in r.items() %}<div class="card kpi"><div class="k-label">{{ k }}</div><div class="k-value">{{ v|thousands }}</div></div>{% endfor %}</div>
+{% elif r and job.kind == 'trace' %}
+<div class="callout">{{ icon('target') }}<div><b>{{ r.hits|length }}</b> tabloda bulundu ({{ r.searched }} kolon arandı). <a href="{{ url_for('siron.record_trace_result', job_id=job.id) }}"><b>Sonucu aç →</b></a></div></div>
+{% elif r and job.kind == 'notebook' %}
+<div class="callout">{{ icon('check') }}<div><b>{{ r.passed }}</b> senaryo geçti, <b>{{ r.failed }}</b> kaldı{% if r.errors %}, {{ r.errors }} hata{% endif %}. <a href="{{ url_for('siron.notebook') }}"><b>Sorgu defterine dön →</b></a></div></div>
 {% elif r and job.kind == 'relcheck' %}
 <div class="callout">{{ icon('shield') }}<div><b>{{ r.checked }}</b> ilişki doğrulandı{% if r.failed %}, {{ r.failed }} hata{% endif %}. <a href="{{ url_for('siron.relations') }}">İlişkilere dön</a></div></div>
 {% endif %}

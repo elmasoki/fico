@@ -123,6 +123,11 @@ class Oracle:
                             "WHERE (c.owner IN ({o}) AND c.constraint_type IN ('P','U','R')) "
                             "OR (c.owner, c.constraint_name) IN (SELECT r_owner, r_constraint_name "
                             "FROM {p}_constraints WHERE owner IN ({o}) AND constraint_type = 'R')",
+            # leading index columns: what the application looks rows up by
+            "indexes": "SELECT i.table_owner, i.table_name, ic.column_name, i.uniqueness "
+                       "FROM {p}_indexes i JOIN {p}_ind_columns ic ON ic.index_owner = i.owner "
+                       "AND ic.index_name = i.index_name "
+                       "WHERE i.table_owner IN ({o}) AND ic.column_position = 1",
             # packages / procedures / views / triggers and what they reference
             "dependencies": "SELECT owner, name, type, referenced_owner, referenced_name, referenced_type "
                             "FROM {p}_dependencies WHERE owner IN ({o}) "
@@ -140,7 +145,13 @@ class Oracle:
             except Exception:
                 prefix = "all"
             for name, sql in queries.items():
-                cur.execute(sql.format(p=prefix, o=owners), names)
+                try:
+                    cur.execute(sql.format(p=prefix, o=owners), names)
+                except Exception:
+                    if name != "indexes":      # index info is optional (privileges vary)
+                        raise
+                    out[name] = []
+                    continue
                 out[name] = [tuple(r) for r in cur]
         return out
 

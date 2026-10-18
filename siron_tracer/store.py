@@ -66,6 +66,9 @@ CREATE TABLE IF NOT EXISTS cat_constraints (
     r_owner TEXT, r_name TEXT, columns TEXT,
     PRIMARY KEY (owner, name)
 );
+CREATE TABLE IF NOT EXISTS cat_indexes (
+    owner TEXT NOT NULL, table_name TEXT NOT NULL, column_name TEXT NOT NULL, uniqueness TEXT
+);
 CREATE TABLE IF NOT EXISTS cat_dependencies (
     owner TEXT NOT NULL, name TEXT NOT NULL, type TEXT,
     ref_owner TEXT, ref_name TEXT NOT NULL, ref_type TEXT
@@ -114,6 +117,20 @@ CREATE TABLE IF NOT EXISTS extract_queries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL, screen_id INTEGER, capture_id INTEGER, sql_id TEXT,
     sql_text TEXT NOT NULL, removed TEXT, note TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notebook_queries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL, target TEXT, description TEXT, sql_text TEXT NOT NULL DEFAULT '', schema_name TEXT,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notebook_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_id INTEGER NOT NULL, sql_text TEXT NOT NULL, note TEXT, author TEXT, created_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS notebook_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    query_id INTEGER NOT NULL, name TEXT NOT NULL, binds TEXT, expect TEXT, note TEXT,
+    last_status TEXT, last_run TEXT, last_detail TEXT, created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS screen_sqls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -324,7 +341,7 @@ class Store:
                                                      key=lambda r: (r[0], r[1], r[3] or 0)):
             cols_by_cons.setdefault((owner, cname), []).append(column)
         with self._lock, self._conn() as db:
-            for table in ("objects", "cat_tables", "cat_columns", "cat_constraints", "cat_dependencies"):
+            for table in ("objects", "cat_tables", "cat_columns", "cat_constraints", "cat_dependencies", "cat_indexes"):
                 db.execute("DELETE FROM %s" % table)
             db.executemany("INSERT OR IGNORE INTO objects (owner, name, type) VALUES (?,?,?)",
                            data.get("objects", []))
@@ -336,6 +353,7 @@ class Store:
                 [tuple(c[:6]) + (",".join(cols_by_cons.get((c[0], c[1]), [])),)
                  for c in data.get("constraints", [])])
             db.executemany("INSERT INTO cat_dependencies VALUES (?,?,?,?,?,?)", data.get("dependencies", []))
+            db.executemany("INSERT INTO cat_indexes VALUES (?,?,?,?)", data.get("indexes", []))
         self.set_meta("catalog_version", now())
         self._catalog = None
         self._bump()
@@ -359,7 +377,10 @@ class Store:
                            for r in db.execute("SELECT * FROM cat_constraints")]
             deps = [Dependency(r["owner"], r["name"], r["type"], r["ref_owner"], r["ref_name"], r["ref_type"])
                     for r in db.execute("SELECT * FROM cat_dependencies")]
-        self._catalog = Catalog(tables, objects, constraints, version, deps)
+            indexed = {}
+            for r in db.execute("SELECT * FROM cat_indexes"):
+                indexed.setdefault((r["owner"], r["table_name"]), set()).add(r["column_name"])
+        self._catalog = Catalog(tables, objects, constraints, version, deps, indexed)
         return self._catalog
 
     # ------------------------------------------------------------------ annotations
@@ -514,6 +535,93 @@ class Store:
     def delete_extract_query(self, query_id: int):
         with self._lock, self._conn() as db:
             db.execute("DELETE FROM extract_queries WHERE id = ?", (query_id,))
+
+    # ------------------------------------------------------------------ query notebook
+    @staticmethod
+    def _author() -> Optional[str]:
+        try:
+            return "%s@%s" % (getpass.getuser(), socket.gethostname())
+        except Exception:
+            return None
+
+    def add_notebook_query(self, name: str, sql_text: str = "", target: Optional[str] = None,
+                           description: Optional[str] = None, schema: Optional[str] = None) -> int:
+        with self._lock, self._conn() as db:
+            qid = db.execute("INSERT INTO notebook_queries (name, target, description, sql_text, schema_name, created_at, "
+                             "updated_at) VALUES (?,?,?,?,?,?,?)",
+                             (name, target or None, description or None, sql_text or "", schema or None, now(), now())).lastrowid
+            if sql_text:
+                db.execute("INSERT INTO notebook_versions (query_id, sql_text, note, author, created_at) VALUES (?,?,?,?,?)",
+                           (qid, sql_text, "İlk sürüm", self._author(), now()))
+            return qid
+
+    def notebook_queries(self) -> List[dict]:
+        with self._conn() as db:
+            rows = db.execute(
+                "SELECT q.*, (SELECT COUNT(*) FROM notebook_cases c WHERE c.query_id = q.id) AS cases, "
+                "(SELECT COUNT(*) FROM notebook_cases c WHERE c.query_id = q.id AND c.last_status = 'pass') AS passed, "
+                "(SELECT COUNT(*) FROM notebook_cases c WHERE c.query_id = q.id AND c.last_status = 'fail') AS failed, "
+                "(SELECT COUNT(*) FROM notebook_cases c WHERE c.query_id = q.id AND c.last_status = 'error') AS errors, "
+                "(SELECT COUNT(*) FROM notebook_versions v WHERE v.query_id = q.id) AS versions, "
+                "(SELECT MAX(c.last_run) FROM notebook_cases c WHERE c.query_id = q.id) AS last_run "
+                "FROM notebook_queries q ORDER BY q.target, q.name").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_notebook_query(self, query_id: int) -> Optional[dict]:
+        return next((q for q in self.notebook_queries() if q["id"] == query_id), None)
+
+    def save_notebook_query(self, query_id: int, name: str, sql_text: str, target: Optional[str] = None,
+                            description: Optional[str] = None, schema: Optional[str] = None,
+                            note: Optional[str] = None) -> bool:
+        """Update a query; a changed SQL text becomes a new version. Returns True when the SQL changed."""
+        with self._lock, self._conn() as db:
+            old = db.execute("SELECT sql_text FROM notebook_queries WHERE id = ?", (query_id,)).fetchone()
+            changed = old is not None and (old[0] or "").strip() != (sql_text or "").strip()
+            db.execute("UPDATE notebook_queries SET name = ?, target = ?, description = ?, sql_text = ?, schema_name = ?, "
+                       "updated_at = ? WHERE id = ?", (name, target or None, description or None, sql_text or "",
+                                                       schema or None, now(), query_id))
+            if changed:
+                db.execute("INSERT INTO notebook_versions (query_id, sql_text, note, author, created_at) VALUES (?,?,?,?,?)",
+                           (query_id, sql_text, note or None, self._author(), now()))
+            return changed
+
+    def notebook_versions(self, query_id: int) -> List[dict]:
+        with self._conn() as db:
+            return [dict(r) for r in db.execute("SELECT * FROM notebook_versions WHERE query_id = ? ORDER BY id DESC",
+                                                (query_id,)).fetchall()]
+
+    def delete_notebook_query(self, query_id: int):
+        with self._lock, self._conn() as db:
+            for table, col in (("notebook_cases", "query_id"), ("notebook_versions", "query_id"), ("notebook_queries", "id")):
+                db.execute("DELETE FROM %s WHERE %s = ?" % (table, col), (query_id,))
+
+    def add_notebook_case(self, query_id: int, name: str, binds: str = "", expect: str = "", note: str = "") -> int:
+        with self._lock, self._conn() as db:
+            return db.execute("INSERT INTO notebook_cases (query_id, name, binds, expect, note, created_at) VALUES (?,?,?,?,?,?)",
+                              (query_id, name, binds, expect, note or None, now())).lastrowid
+
+    def notebook_cases(self, query_id: int) -> List[dict]:
+        with self._conn() as db:
+            out = []
+            for r in db.execute("SELECT * FROM notebook_cases WHERE query_id = ? ORDER BY id", (query_id,)).fetchall():
+                d = dict(r)
+                d["last_detail"] = json.loads(d["last_detail"]) if d.get("last_detail") else None
+                out.append(d)
+            return out
+
+    def update_notebook_case(self, case_id: int, name: str, binds: str, expect: str, note: str = ""):
+        with self._lock, self._conn() as db:
+            db.execute("UPDATE notebook_cases SET name = ?, binds = ?, expect = ?, note = ?, last_status = NULL, "
+                       "last_detail = NULL WHERE id = ?", (name, binds, expect, note or None, case_id))
+
+    def record_case_result(self, case_id: int, status: str, detail: dict):
+        with self._lock, self._conn() as db:
+            db.execute("UPDATE notebook_cases SET last_status = ?, last_run = ?, last_detail = ? WHERE id = ?",
+                       (status, now(), json.dumps(detail, ensure_ascii=False, default=str), case_id))
+
+    def delete_notebook_case(self, case_id: int):
+        with self._lock, self._conn() as db:
+            db.execute("DELETE FROM notebook_cases WHERE id = ?", (case_id,))
 
     # ------------------------------------------------------------------ screen <-> SQL links
     def link_sql(self, screen_id: int, capture_id: int, sql_id: str, note: Optional[str] = None) -> int:

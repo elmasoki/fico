@@ -15,6 +15,7 @@
     <span class="spacer"></span>
     <input type="text" name="title" value="Sorgu" style="width:220px" title="Rapor başlığı">
     <button name="do" value="snapshot" class="btn-secondary">{{ icon('bookmark') }}Rapora ekle</button>
+    <button formaction="{{ url_for('siron.notebook_new') }}" class="btn-secondary" title="Sorguyu sürümleri ve doğrulama senaryolarıyla saklamak için">{{ icon('flask') }}Sorgu defterine ekle</button>
   </div>
 </form>
 {% if error %}<div class="callout err">{{ icon('alert') }}<div>{{ error }}</div></div>{% endif %}

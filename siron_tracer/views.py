@@ -19,6 +19,7 @@ from .sqlutil import (BindSlot, bind_segments, build_slots, find_placeholders, f
                       substitute_binds)
 from . import knowledge
 from .sessions import assess, breakdown, filter_records, is_mixed
+from .trace import path_sql
 from .store import parse_ts
 from .web import (CAPTURE_KINDS, STATUSES, capture_analysis, capture_or_404, capture_schema, ctx, ext,
                   find_in_binds, get_catalog, is_sensitive, known_schemas, known_users, literal_for, log, masked,
@@ -33,7 +34,8 @@ def _globals(state):
         STATUSES=STATUSES, USAGE_LABELS=USAGE_LABELS, label=label, format_sql=format_sql, ann=ann,
         CAPTURE_KINDS=CAPTURE_KINDS, SCREEN_STATUSES=SCREEN_STATUSES, MASK_MODES=MASK_MODES,
         JOB_KINDS=JOB_KINDS, RCONF=knowledge.CONFIDENCE, RCONF_HELP=knowledge.CONFIDENCE_HELP,
-        research_of=knowledge.classify, explain_name=knowledge.explain_text, bind_segments_for=_unbound_segments)
+        research_of=knowledge.classify, explain_name=knowledge.explain_text, bind_segments_for=_unbound_segments,
+        trace_sql=path_sql)
 
 
 def _unbound_segments(sql):
@@ -668,4 +670,4 @@ def capture_csv(capture_id):
                                "bindler", "sql_bind_yerlestirilmis"], "capture_%d.csv" % capture_id)
 
 
-from . import views_catalog, views_explore, views_ops, views_reports, views_research  # noqa: E402,F401  (register their routes on bp)
+from . import views_catalog, views_explore, views_notebook, views_ops, views_reports, views_research  # noqa: E402,F401  (register their routes on bp)

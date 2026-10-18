@@ -161,3 +161,72 @@ def test_markers_sources_and_extract_queries_on_oracle(settings, audit_policy, t
     assert job["status"] == "done", job["message"]
     files = {f["table"]: f["rows"] for f in job["result"]["files"]}
     assert files["Ekran sorgusu: Hesaplar listesi"] == 400
+
+
+def test_record_trace_and_notebook_on_oracle(settings, audit_policy, tmp_path):
+    settings.sqlite_path = str(tmp_path / "trace.db")
+    app = create_app(settings, sync_jobs=True)
+    app.config["TESTING"] = True
+    store = app.extensions["siron"]["store"]
+    client = app.test_client()
+    client.post("/catalog/refresh")
+    assert store.catalog().indexed.get(("SIRON", "CUSTOMER")) >= {"ID", "CUST_NO"}     # PK / UNIQUE indexes loaded
+
+    # record trace: customer C0007 -> its row, its alert, then its 2 accounts through the FK
+    r = client.post("/trace", data={"value": "C0007", "depth": "2"})
+    job = store.get_job(int(r.headers["Location"].rsplit("/", 1)[1]))
+    assert job["status"] == "done", job["message"]
+    hits = {h["name"]: h for h in job["result"]["hits"]}
+    assert hits["CUSTOMER"]["depth"] == 0 and hits["CUSTOMER"]["count"] == 1
+    assert hits["ALERT"]["depth"] == 0 and hits["ALERT"]["count"] == 1
+    assert hits["ACCOUNT"]["depth"] == 1 and hits["ACCOUNT"]["count"] == 2 and not job["result"]["errors"]
+    page = client.get("/trace/%d" % job["id"]).get_data(as_text=True)
+    assert 'CUSTOMER.ID</span>' in page and 'ACCOUNT.CUST_ID</span><span class="badge ok">FK' in page
+
+    # the trace's path query goes to the notebook with a ready case, and passes on real data
+    from siron_tracer.trace import path_sql
+    client.post("/notebook/new", data={"name": "Hesaplar", "sql": path_sql(hits["ACCOUNT"]), "case_name": "C0007",
+                                       "case_binds": "deger = C0007", "case_expect": "satır = 2\nACC_NO ~ A0"})
+    qid = store.notebook_queries()[0]["id"]
+    client.post("/notebook/%d" % qid, data={"do": "run_all"})
+    case = store.notebook_cases(qid)[0]
+    assert case["last_status"] == "pass", case["last_detail"]
+
+    # named binds in any case, positional binds, a failing expectation and an Oracle error
+    client.post("/notebook/new", data={"name": "Müşteri", "schema": "SIRON",
+                                       "sql": "SELECT cust_no, full_name, risk_class, birth_date FROM customer "
+                                              "WHERE cust_no = :Musteri_No"})
+    q2 = store.notebook_queries()[0]["id"] if store.notebook_queries()[0]["name"] == "Müşteri" else \
+        store.notebook_queries()[1]["id"]
+    store.add_notebook_case(q2, "Doğru", "musteri_no = C0007", "satır = 1\nFULL_NAME = Müşteri 7\nRISK_CLASS dolu")
+    store.add_notebook_case(q2, "Yanlış", "musteri_no = C0007", "FULL_NAME = Müşteri 8")
+    client.post("/notebook/new", data={"name": "Konum", "sql": "SELECT full_name FROM customer WHERE id = :1 OR id = :2"})
+    q3 = next(q["id"] for q in store.notebook_queries() if q["name"] == "Konum")
+    store.add_notebook_case(q3, "İki müşteri", "1 = 7\n2 = 8", "satır = 2\nFULL_NAME = Müşteri 8")
+    client.post("/notebook/new", data={"name": "Bozuk", "sql": "SELECT olmayan_kolon FROM customer"})
+    q4 = next(q["id"] for q in store.notebook_queries() if q["name"] == "Bozuk")
+    store.add_notebook_case(q4, "Hata", "", "satır >= 1")
+    r = client.post("/notebook/run")
+    job = store.get_job(int(r.headers["Location"].rsplit("/", 1)[1]))
+    assert job["status"] == "done", job["message"]
+    assert job["result"] == {"passed": 3, "failed": 1, "errors": 1, "queries": 4}, \
+        [(c["name"], c["last_detail"]) for q in store.notebook_queries() for c in store.notebook_cases(q["id"])]
+    bad = next(c for c in store.notebook_cases(q4))
+    assert "ORA-00904" in bad["last_detail"]["error"]
+    assert "Müşteri 7" in next(c for c in store.notebook_cases(q2) if c["name"] == "Yanlış")["last_detail"]["checks"][0]["detail"]
+    html = client.get("/notebook/report.html").get_data(as_text=True)
+    assert "ORA-00904" in html and "FULL_NAME = Müşteri 8" in html
+
+    # expectations suggested from what the screen SQL returned for its recorded bind
+    client.post("/captures", data={"name": "Müşteri kartı", "db_users": ["SIRON"], "schema": "SIRON"})
+    cid = store.list_captures()[0]["id"]
+    time.sleep(1)
+    conn = oracledb.connect(user="siron", password=APP_PW, dsn=DSN)
+    conn.cursor().execute(SQL, ["C0007"]).fetchall()
+    conn.close()
+    time.sleep(1.5)
+    client.post("/captures/%d/stop" % cid)
+    client.post("/inventory/sql", data={"capture_id": cid, "sql_id": compute_sql_id(SQL), "new_screen": "Müşteri > Kart"})
+    html = client.post("/notebook/%d" % q2, data={"do": "suggest", "ref": "%d:%s" % (cid, compute_sql_id(SQL))}
+                       ).get_data(as_text=True)
+    assert "satır = 2\nFULL_NAME = Müşteri 7\nIBAN = TR" in html

@@ -73,8 +73,8 @@ class FakeOracle:
     def run_select(self, sql, max_rows=None, binds=None, timeout_sec=None, schema=None):
         self.ran.append((sql, binds))
         self.last_schema = schema
-        for name in binds or {}:  # python-oracledb rejects binds that are not in the SQL (DPY-4008)
-            assert re.search(r":%s\b" % name, sql), "bind :%s not in SQL" % name
+        for name in binds if isinstance(binds, dict) else ():  # python-oracledb rejects binds that are not in the SQL (DPY-4008)
+            assert re.search(r":%s\b" % name, sql, re.I), "bind :%s not in SQL" % name
         if binds and "CASE WHEN" in sql:  # table value search: one flag column per searched column
             n = sql.count("CASE WHEN")
             flags = [1 if "CUST_NO" in part else 0 for part in sql.split("CASE WHEN")[1:]]

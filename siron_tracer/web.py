@@ -146,6 +146,20 @@ def project_relations(min_confidence: int = 0) -> List[Relation]:
     return [r for r in cache[key] if r.confidence >= min_confidence]
 
 
+def schema_relations(min_confidence: int = 50) -> List[Relation]:
+    """Relations across the whole schema (constraints, captured joins, name inference), cached."""
+    store = ctx()[2]
+    catalog = get_catalog()
+    key = ("schema_rels", catalog.version if catalog else "", _version(), store.checks_version, min_confidence)
+    cache = _cache()
+    if key not in cache:
+        keys = [k for k, t in catalog.tables.items() if t.obj_type == "TABLE"] if catalog else []
+        cache[key] = build_relations(catalog, set(keys), None, project_analysis().insights, store.relation_checks(),
+                                     True, min_confidence) if keys else []
+        _trim(cache)
+    return cache[key]
+
+
 def literal_for(sql_text: str, raw_binds: Optional[str]):
     placeholders = find_placeholders(sql_text)
     slots = build_slots(placeholders, parse_audit_binds(raw_binds))

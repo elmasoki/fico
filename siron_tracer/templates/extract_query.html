@@ -34,6 +34,7 @@
         {{ mask_select() }}
         <button name="do" value="csv" class="btn-secondary" title="En fazla {{ settings.max_export_rows|thousands }} satır">{{ icon('download') }}CSV</button>
         <a class="btn btn-ghost" href="{{ url_for('siron.sql_runner', sql=sql, schema=schema) }}">{{ icon('code') }}Konsolda aç</a>
+        <button formaction="{{ url_for('siron.notebook_new') }}" formnovalidate class="btn-ghost" title="Sürüm geçmişi ve doğrulama senaryolarıyla">{{ icon('flask') }}Sorgu defterine ekle</button><input type="hidden" name="schema" value="{{ schema }}">
       </div>
       {% if count is not none %}<div class="count-box mt16"><b class="tnum">{{ count|thousands }}</b><span>satır taşınacak</span></div>{% endif %}
     </div>

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sorgu doğrulama raporu</title>
+<style>
+  :root { --ink: #101828; --ink-2: #475467; --line: #e4e7ec; --ok: #067647; --ok-soft: #ecfdf3; --err: #b42318; --err-soft: #fef3f2;
+          --warn: #b54708; --warn-soft: #fffaeb; --accent: #1d4ed8; }
+  body { font: 14px/1.5 "Segoe UI", system-ui, sans-serif; color: var(--ink); background: #fff; margin: 0; padding: 32px 16px; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font-size: 24px; margin: 0 0 4px; } h2 { font-size: 18px; margin: 0; } h3 { font-size: 14px; margin: 16px 0 6px; }
+  .sub { color: var(--ink-2); margin: 0 0 24px; }
+  .sum { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px; }
+  .sum div { border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; min-width: 140px; }
+  .sum b { display: block; font-size: 24px; }
+  section { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 20px; page-break-inside: avoid; }
+  .head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .meta { color: var(--ink-2); font-size: 12.5px; }
+  pre { background: #f8fafc; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; word-break: break-word;
+        font: 12px/1.45 Consolas, "Courier New", monospace; margin: 8px 0 0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; background: #f2f4f7; color: var(--ink-2); }
+  .pass { background: var(--ok-soft); color: var(--ok); } .fail { background: var(--err-soft); color: var(--err); } .error { background: var(--warn-soft); color: var(--warn); }
+  table { border-collapse: collapse; width: 100%; font-size: 12.5px; margin-top: 6px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink-2); font-weight: 600; }
+  .mono { font-family: Consolas, "Courier New", monospace; }
+  .ok { color: var(--ok); } .no { color: var(--err); }
+  .case { border-top: 1px dashed var(--line); padding-top: 10px; margin-top: 12px; }
+  @media print { body { padding: 0; } }
+</style>
+</head>
+<body><main>
+<h1>Sorgu doğrulama raporu</h1>
+<p class="sub">Siron SQL Tracer · {{ generated }} · Her senaryo, Siron ekranında görülen bir kaydın değerleriyle taşıma sorgusunun sonucunun karşılaştırmasıdır. Sonuçlar her senaryonun son çalıştırılmasına aittir.</p>
+{% set all_cases = queries|map(attribute='case_list')|sum(start=[]) %}
+<div class="sum">
+  <div>Sorgu<b>{{ queries|length }}</b></div>
+  <div>Senaryo<b>{{ all_cases|length }}</b></div>
+  <div class="ok">Geçen<b>{{ all_cases|selectattr('last_status', 'equalto', 'pass')|list|length }}</b></div>
+  <div class="no">Kalan<b>{{ all_cases|selectattr('last_status', 'equalto', 'fail')|list|length }}</b></div>
+  <div>Hata / çalıştırılmadı<b>{{ all_cases|selectattr('last_status', 'equalto', 'error')|list|length }} / {{ all_cases|rejectattr('last_status')|list|length }}</b></div>
+</div>
+{% for q in queries %}
+<section>
+  <div class="head"><h2>{{ q.name }}</h2>{% if q.target %}<span class="badge">Hedef: {{ q.target }}</span>{% endif %}
+    <span class="badge {{ 'pass' if q.cases and q.passed == q.cases else 'fail' if q.failed or q.errors else '' }}">{{ q.passed }} / {{ q.cases }} geçti</span></div>
+  <div class="meta">{{ q.version_count }} sürüm · son değişiklik {{ q.updated_at[:16] }}{% if q.schema_name %} · şema {{ q.schema_name }}{% endif %}</div>
+  {% if q.description %}<p>{{ q.description }}</p>{% endif %}
+  <pre>{{ q.sql_text }}</pre>
+  {% for c in q.case_list %}{% set d = c.last_detail %}
+  <div class="case">
+    <div class="head"><b>{{ c.name }}</b><span class="badge {{ c.last_status or '' }}">{{ {'pass': 'Geçti', 'fail': 'Kaldı', 'error': 'Hata'}.get(c.last_status, 'Çalıştırılmadı') }}</span>
+      <span class="meta">{{ c.last_run[:16] if c.last_run else '' }}{% if c.note %} · {{ c.note }}{% endif %}</span></div>
+    {% if c.binds %}<div class="meta mono">{{ c.binds|replace('\n', ' · ') }}</div>{% endif %}
+    {% if d and d.error %}<p class="no">{{ d.error }}</p>
+    {% elif d %}<table><thead><tr><th style="width:40%">Beklenen</th><th>Sonuç</th></tr></thead><tbody>
+      {% for ch in d.checks %}<tr><td class="mono">{{ ch.line }}</td><td class="{{ 'ok' if ch.ok else 'no' }}">{{ '✓' if ch.ok else '✗' }} {{ ch.detail }}</td></tr>{% endfor %}</tbody></table>
+    {% else %}<p class="meta">Beklenen:</p><pre>{{ c.expect }}</pre>{% endif %}
+  </div>
+  {% else %}<p class="meta">Bu sorgu için senaryo tanımlanmadı.</p>{% endfor %}
+</section>
+{% else %}<p>Defterde sorgu yok.</p>{% endfor %}
+</main></body>
+</html>

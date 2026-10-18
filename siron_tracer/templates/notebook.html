@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% from "_macros.html" import icon, empty, kpi with context %}
+{% block page_title %}Sorgu defteri{% endblock %}
+{% block subtitle %}<p class="sub">Taşımayı yapacak sorguların ortak defteri. Her sorgu her değişiklikte yeni sürüm olarak saklanır; <b>doğrulama senaryoları</b> Siron ekranından alınmış bir kaydın bind değerleri ve ekranda görünen değerlerdir. Senaryoları çalıştırmak sorgunun hâlâ Siron'un gösterdiğini getirip getirmediğini söyler; rapor iş birimi için kanıttır.</p>{% endblock %}
+{% block actions %}
+<form method="post" action="{{ url_for('siron.notebook_run') }}" class="inline"><button class="btn-secondary" {% if not totals.cases %}disabled{% endif %} data-busy="Başlatılıyor">{{ icon('play') }}Tüm senaryoları çalıştır</button></form>
+<a class="btn btn-secondary" href="{{ url_for('siron.notebook_report') }}">{{ icon('download') }}Doğrulama raporu</a>
+<button type="button" class="btn-primary" onclick="document.getElementById('nbnew').showModal()">{{ icon('plus') }}Yeni sorgu</button>
+{% endblock %}
+{% block content %}
+<div class="grid g4">
+  {{ kpi('flask', 'Sorgu', queries|length, '%d hedef' % targets|length if targets else 'hedef tanımsız') }}
+  {{ kpi('check', 'Senaryo', totals.cases, 'doğrulama vakası') }}
+  {{ kpi('shield', 'Geçen', totals.passed, 'son çalıştırmada', (100 * totals.passed / totals.cases)|round|int if totals.cases else none) }}
+  {{ kpi('alert', 'Kalan / hata', '%d / %d' % (totals.failed, totals.errors), 'çalıştırılmamış: %d' % (totals.cases - totals.passed - totals.failed - totals.errors)) }}
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>{{ icon('flask') }}Sorgular</h2><span class="meta">{{ queries|length }}</span>
+    {% if queries|length > 6 %}<div class="tools"><input type="search" placeholder="Süz…" oninput="var q=this.value.toLocaleLowerCase('tr');document.querySelectorAll('#nbtable tbody tr').forEach(function(tr){tr.classList.toggle('hidden', q &amp;&amp; tr.textContent.toLocaleLowerCase('tr').indexOf(q) &lt; 0)})" style="width:200px"></div>{% endif %}</div>
+  {% if queries %}
+  <div class="table-wrap"><table id="nbtable">
+    <thead><tr><th>Sorgu</th><th>Hedef</th><th>Senaryolar</th><th class="num">Sürüm</th><th>Son doğrulama</th><th>Güncellendi</th></tr></thead>
+    <tbody>{% for q in queries %}
+    <tr>
+      <td><a class="cell-title" href="{{ url_for('siron.notebook_query', query_id=q.id) }}">{{ q.name }}</a>{% if q.description %}<div class="xs muted">{{ q.description|truncate(90) }}</div>{% endif %}</td>
+      <td>{% if q.target %}<span class="badge">{{ q.target }}</span>{% else %}<span class="muted xs">—</span>{% endif %}</td>
+      <td>{% if q.cases %}<div class="nb-bar" title="{{ q.passed }} geçti · {{ q.failed }} kaldı · {{ q.errors }} hata · {{ q.cases - q.passed - q.failed - q.errors }} çalıştırılmadı">
+          {% for n, cls in [(q.passed, 'pass'), (q.failed, 'fail'), (q.errors, 'error'), (q.cases - q.passed - q.failed - q.errors, 'none')] %}{% if n %}<i class="{{ cls }}" style="flex:{{ n }}"></i>{% endif %}{% endfor %}</div>
+          <span class="xs muted"><b class="ok">{{ q.passed }}</b> / {{ q.cases }} geçti{% if q.failed %} · <b class="err">{{ q.failed }} kaldı</b>{% endif %}{% if q.errors %} · <b class="warn">{{ q.errors }} hata</b>{% endif %}</span>
+        {% else %}<span class="muted xs">senaryo yok</span>{% endif %}</td>
+      <td class="num tnum">{{ q.versions }}</td>
+      <td class="small">{{ q.last_run|short_ts if q.last_run else '—' }}</td>
+      <td class="small muted">{{ q.updated_at|short_ts }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}{{ empty('flask', 'Defter boş', '<span class="small">Yeni bir sorgu yazın ya da <a href="' ~ url_for('siron.record_trace') ~ '">Kayıt izi</a> sonucundan, ekran sorgusundan veya SQL konsolundan "Sorgu defterine ekle" ile başlatın.</span>') }}{% endif %}
+</div>
+
+{% if runs %}<div class="card"><div class="card-head"><h2>{{ icon('clock') }}Son toplu doğrulamalar</h2></div>
+  <ul class="list">{% for j in runs %}<li><span class="grow"><a class="t" href="{{ url_for('siron.job', job_id=j.id) }}">{{ j.title }}</a><span class="s">{{ j.created_at|short_ts }} · {{ j.message or '' }}</span></span>
+    {% if j.status == 'done' %}{% set r = j.result or {} %}<span class="badge {{ 'ok' if not r.failed and not r.errors else 'err' }}">{{ r.passed }} geçti{% if r.failed %} · {{ r.failed }} kaldı{% endif %}{% if r.errors %} · {{ r.errors }} hata{% endif %}</span>
+    {% elif j.status in ('running', 'queued') %}<span class="badge info">%{{ j.progress }}</span>{% else %}<span class="badge err">{{ j.status }}</span>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+
+<dialog id="nbnew" class="modal">
+  <form method="post" action="{{ url_for('siron.notebook_new') }}" class="modal-body">
+    <div class="modal-head"><h2>{{ icon('plus') }}Yeni sorgu</h2><button type="button" class="btn-ghost btn-sm" onclick="this.closest('dialog').close()">{{ icon('x') }}</button></div>
+    <div>
+      <div class="row">
+        <div class="field" style="flex:2"><label>Ad</label><input type="text" name="name" required placeholder="ör. Müşteri ana kaydı"></div>
+        <div class="field"><label>Hedef <span class="muted">(yeni sistemdeki tablo/alan)</span></label><input type="text" name="target" list="nbtargets" placeholder="ör. CUSTOMER"></div>
+      </div>
+      <datalist id="nbtargets">{% for t in targets %}<option value="{{ t }}">{% endfor %}</datalist>
+      <div class="field"><label>Açıklama</label><input type="text" name="description" placeholder="ör. Bireysel ve kurumsal müşteriler, KYC risk sınıfı ile"></div>
+      <div class="field"><label>SQL <span class="muted">— bind'ler ör. :musteri_no; senaryolar bunlara değer verir</span></label>
+        <textarea class="sql" name="sql" spellcheck="false" style="min-height:200px;font-family:var(--mono)" placeholder="SELECT ... FROM ... WHERE musteri_no = :musteri_no"></textarea></div>
+      <div class="field mb0"><label>Şema</label><input type="text" name="schema" class="mono" value="{{ settings.current_schema }}"></div>
+    </div>
+    <div class="modal-foot"><button class="btn-primary">{{ icon('check') }}Oluştur</button><button type="button" class="btn-ghost" onclick="this.closest('dialog').close()">Vazgeç</button></div>
+  </form>
+</dialog>
+{% endblock %}

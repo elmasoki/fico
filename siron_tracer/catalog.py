@@ -107,8 +107,10 @@ CODE_TYPES = ("PACKAGE", "PACKAGE BODY", "PROCEDURE", "FUNCTION", "TRIGGER", "TY
 class Catalog:
     def __init__(self, tables: List[Table], objects: Dict[ObjectKey, str],
                  constraints: List[Constraint], version: str = "",
-                 dependencies: Optional[List[Dependency]] = None):
+                 dependencies: Optional[List[Dependency]] = None,
+                 indexed: Optional[Dict[ObjectKey, Set[str]]] = None):
         self.version = version
+        self.indexed: Dict[ObjectKey, Set[str]] = indexed or {}    # leading index columns per table
         self._deps: Dict[ObjectKey, Set[Tuple[ObjectKey, str]]] = {}
         self._rdeps: Dict[ObjectKey, Set[Tuple[ObjectKey, str]]] = {}
         for d in dependencies or []:
