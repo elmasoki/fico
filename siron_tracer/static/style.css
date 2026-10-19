@@ -27,6 +27,14 @@
   --warn: #b54708; --warn-soft: #fffaeb;
   --err: #b42318; --err-soft: #fef3f2;
   --info-soft: #f0f6fe;
+  /* solid accent fills (buttons, badges) and the text drawn on them */
+  --accent-fill: var(--accent);
+  --accent-fill-hover: var(--accent-ink);
+  --on-accent: #fff;
+  --accent-tint: #7ab0f0;
+  --brand-grad: linear-gradient(135deg, #3987e5 0%, #1c5cab 55%, #0d366b 100%);
+  --brand-glow: rgba(42, 120, 214, .35);
+  --brand-ink: #fff;
 
   --side: #0b1324;
   --side-2: #121c31;
@@ -57,7 +65,7 @@
     --ink: #eef0f4; --ink-2: #b4bccb; --ink-3: #7b8597; --line: #252b36; --line-strong: #323946;
     --accent: #3987e5; --accent-ink: #7ab0f0; --accent-soft: #15243a; --accent-ring: rgba(57, 135, 229, .35);
     --ok: #3ccb7f; --ok-soft: #0f2a1d; --warn: #f5a524; --warn-soft: #2d2210; --err: #f97066; --err-soft: #2f1513;
-    --info-soft: #132033;
+    --info-soft: #132033; --accent-fill-hover: #2a78d6;
     --side: #080b11; --side-2: #0e131c; --side-active: #18243a;
     --d-migrate: #3987e5; --d-review: #d95926; --d-ignore: #898781; --d-none: #2c2c2a;
     --grid: #2c2c2a; --track: #232833;
@@ -70,11 +78,46 @@
   --ink: #eef0f4; --ink-2: #b4bccb; --ink-3: #7b8597; --line: #252b36; --line-strong: #323946;
   --accent: #3987e5; --accent-ink: #7ab0f0; --accent-soft: #15243a; --accent-ring: rgba(57, 135, 229, .35);
   --ok: #3ccb7f; --ok-soft: #0f2a1d; --warn: #f5a524; --warn-soft: #2d2210; --err: #f97066; --err-soft: #2f1513;
-  --info-soft: #132033;
+  --info-soft: #132033; --accent-fill-hover: #2a78d6;
   --side: #080b11; --side-2: #0e131c; --side-active: #18243a;
   --d-migrate: #3987e5; --d-review: #d95926; --d-ignore: #898781; --d-none: #2c2c2a;
   --grid: #2c2c2a; --track: #232833;
   --shadow-sm: none; --shadow: 0 1px 2px rgba(0,0,0,.4); --shadow-lg: 0 16px 40px -10px rgba(0,0,0,.7);
+}
+
+/* ---------------------------------------------------------------- Odeabank theme (optional)
+   Selected with the palette button in the top bar or ui_theme = odea in config.ini.
+   Black and gold: gold fills carry dark text; text-level gold is the darker olive tone
+   so it keeps 4.5:1 on white (gold on white is only 1.4:1). */
+:root[data-brand="odea"] {
+  --page: #f6f5f2; --surface: #ffffff; --surface-2: #faf9f6; --surface-3: #efede7; --hover: #f4f2ec;
+  --ink: #1a1a1a; --ink-2: #55524a; --ink-3: #8c887d; --line: #e7e4dc; --line-strong: #d3cfc4;
+  --accent: #9c8000; --accent-ink: #7a6917; --accent-soft: #fff6c2; --accent-ring: rgba(254, 213, 0, .55);
+  --accent-fill: #fed500; --accent-fill-hover: #f2c900; --on-accent: #1a1a1a; --accent-tint: #ffe873;
+  --info-soft: #fffbe6;
+  --side: #141414; --side-2: #1f1f1f; --side-ink: #d6d6d6; --side-ink-2: #8f8f8f; --side-active: #2a2a2a;
+  --brand-grad: linear-gradient(135deg, #ffe24d 0%, #fed500 55%, #d9b500 100%);
+  --brand-glow: rgba(254, 213, 0, .30); --brand-ink: #1a1a1a;
+}
+:root[data-brand="odea"] .callout .ic { color: var(--accent-ink); }
+:root[data-brand="odea"] .btn-primary .spinner { border-color: rgba(26, 26, 26, .25); border-top-color: #1a1a1a; }
+@media (prefers-color-scheme: dark) {
+  :root[data-brand="odea"]:where(:not([data-theme="light"])) {
+    --page: #0e0e0d; --surface: #171715; --surface-2: #1c1c1a; --surface-3: #242421; --hover: #21211e;
+    --ink: #f2f1ec; --ink-2: #c2bfb4; --ink-3: #8a877d; --line: #2b2a26; --line-strong: #3a3934;
+    --accent: #fed500; --accent-ink: #fed500; --accent-soft: #2b2608; --accent-ring: rgba(254, 213, 0, .4);
+    --accent-fill: #fed500; --accent-fill-hover: #ffe24d; --on-accent: #1a1a1a; --accent-tint: #8c7600;
+    --info-soft: #221f0c;
+    --side: #0a0a0a; --side-2: #151514; --side-active: #22211e;
+  }
+}
+:root[data-brand="odea"][data-theme="dark"] {
+  --page: #0e0e0d; --surface: #171715; --surface-2: #1c1c1a; --surface-3: #242421; --hover: #21211e;
+  --ink: #f2f1ec; --ink-2: #c2bfb4; --ink-3: #8a877d; --line: #2b2a26; --line-strong: #3a3934;
+  --accent: #fed500; --accent-ink: #fed500; --accent-soft: #2b2608; --accent-ring: rgba(254, 213, 0, .4);
+  --accent-fill: #fed500; --accent-fill-hover: #ffe24d; --on-accent: #1a1a1a; --accent-tint: #8c7600;
+  --info-soft: #221f0c;
+  --side: #0a0a0a; --side-2: #151514; --side-active: #22211e;
 }
 
 /* ---------------------------------------------------------------- base */
@@ -104,9 +147,9 @@ hr { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 18px 18px 16px; color: #fff; text-decoration: none; }
 .brand:hover { text-decoration: none; }
 .brand-mark { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex: none;
-              background: linear-gradient(135deg, #3987e5 0%, #1c5cab 55%, #0d366b 100%);
-              box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 4px 12px rgba(42,120,214,.35); }
-.brand-mark .ic { stroke: #fff; width: 18px; height: 18px; }
+              background: var(--brand-grad);
+              box-shadow: inset 0 0 0 1px rgba(255,255,255,.18), 0 4px 12px var(--brand-glow); }
+.brand-mark .ic { stroke: var(--brand-ink); width: 18px; height: 18px; }
 .brand b { display: block; font-size: 14px; letter-spacing: -.01em; }
 .brand span { display: block; font-size: 11px; color: var(--side-ink-2); font-weight: 500; }
 .nav { padding: 6px 10px 18px; flex: 1; }
@@ -191,9 +234,8 @@ kbd { font: 11px var(--mono); border: 1px solid var(--line); border-bottom-width
                cursor: pointer; white-space: nowrap; text-decoration: none; transition: background .12s, border-color .12s, box-shadow .12s; }
 .btn:hover, button:hover { text-decoration: none; }
 .btn:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-ring); }
-.btn-primary, button.btn-primary, button:not([class]) { background: var(--accent); color: #fff; box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.12); }
-.btn-primary:hover, button:not([class]):hover { background: var(--accent-ink); }
-:root[data-theme="dark"] .btn-primary:hover { background: #2a78d6; }
+.btn-primary, button.btn-primary, button:not([class]) { background: var(--accent-fill); color: var(--on-accent); box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255,255,255,.12); }
+.btn-primary:hover, button:not([class]):hover { background: var(--accent-fill-hover); }
 .btn-secondary { background: var(--surface); color: var(--ink); border-color: var(--line-strong); box-shadow: var(--shadow-sm); }
 .btn-secondary:hover { background: var(--hover); }
 .btn-ghost { background: transparent; color: var(--ink-2); }
@@ -332,13 +374,13 @@ a.badge.mod:hover { border-color: var(--line-strong); color: var(--ink); text-de
 .u-select { background: var(--accent-soft); color: var(--accent-ink); }
 .u-filter { background: color-mix(in srgb, #7a5af8 13%, transparent); color: color-mix(in srgb, #7a5af8 80%, var(--ink)); }
 .u-set, .u-values { background: var(--err-soft); color: var(--err); }
-.src-constraint { background: var(--ink); color: var(--surface); } .src-sql { background: var(--accent); color: #fff; } .src-name { background: var(--warn-soft); color: var(--warn); }
+.src-constraint { background: var(--ink); color: var(--surface); } .src-sql { background: var(--accent-fill); color: var(--on-accent); } .src-name { background: var(--warn-soft); color: var(--warn); }
 .conf { display: inline-grid; place-items: center; min-width: 36px; height: 22px; font-weight: 600; border-radius: 6px; font-size: 12px; font-variant-numeric: tabular-nums; }
 .conf.hi { background: var(--ok-soft); color: var(--ok); } .conf.mid { background: var(--warn-soft); color: var(--warn); } .conf.lo { background: var(--err-soft); color: var(--err); }
 .pii { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 600; color: var(--warn); background: var(--warn-soft); border-radius: 5px; padding: 1px 6px; }
 .pii .ic { width: 12px; height: 12px; }
 .kbadge { font-size: 11px; font-weight: 600; padding: 1px 6px; border-radius: 5px; background: var(--surface-3); color: var(--ink-2); font-family: var(--mono); }
-.kbadge.pk { background: var(--ink); color: var(--surface); } .kbadge.fk { background: var(--accent); color: #fff; }
+.kbadge.pk { background: var(--ink); color: var(--surface); } .kbadge.fk { background: var(--accent-fill); color: var(--on-accent); }
 
 /* ---------------------------------------------------------------- tabs */
 .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: -4px 0 18px; overflow-x: auto; }
@@ -365,7 +407,7 @@ a.badge.mod:hover { border-color: var(--line-strong); color: var(--ink); text-de
 .empty .ic { width: 36px; height: 36px; stroke-width: 1.4; color: var(--line-strong); margin-bottom: 8px; }
 .empty b { display: block; color: var(--ink); font-size: 14.5px; margin-bottom: 4px; }
 .progress { height: 8px; border-radius: 8px; background: var(--track); overflow: hidden; }
-.progress > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 65%, #7ab0f0)); border-radius: 8px; transition: width .4s; }
+.progress > i { display: block; height: 100%; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 65%, var(--accent-tint))); border-radius: 8px; transition: width .4s; }
 .progress.indet > i { width: 35% !important; animation: indet 1.2s infinite ease-in-out; }
 .pulse-dot { width: 10px; height: 10px; border-radius: 50%; background: #f04438; display: inline-block; box-shadow: 0 0 0 4px rgba(240,68,56,.2); animation: pulse 1.4s infinite; }
 @keyframes pulse { 50% { opacity: .35; } }
@@ -499,7 +541,7 @@ dialog.modal::backdrop { background: rgba(16, 24, 40, .45); backdrop-filter: blu
 .marker-list { margin: 10px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; counter-reset: mk; }
 .marker-list:empty { display: none; }
 .marker-list li { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13px; }
-.marker-list li::before { counter-increment: mk; content: counter(mk); display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--accent); color: #fff; font-size: 11px; font-weight: 700; }
+.marker-list li::before { counter-increment: mk; content: counter(mk); display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--accent-fill); color: var(--on-accent); font-size: 11px; font-weight: 700; }
 .tl-marker { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px 0; }
 .tl-flag { display: inline-flex; align-items: center; gap: 8px; padding: 4px 4px 4px 10px; border-radius: 8px; background: var(--accent-soft);
   color: var(--accent-ink); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
@@ -561,3 +603,17 @@ dialog.modal::backdrop { background: rgba(16, 24, 40, .45); backdrop-filter: blu
   .nb-case > summary .mono { flex-basis: 100%; order: 3; }
   .nb-case-body, .nb-new { padding-left: 16px; padding-right: 16px; }
 }
+
+/* ---------------------------------------------------------------- theme menu */
+.theme-menu { position: relative; }
+.theme-menu > summary { list-style: none; } .theme-menu > summary::-webkit-details-marker { display: none; }
+.theme-pop { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 230px; padding: 6px; background: var(--surface);
+             border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-lg); }
+.theme-pop .t-label { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 6px 8px 4px; }
+.theme-pop button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px; border-radius: 7px; background: none;
+                    border: 0; color: var(--ink); font-size: 13.5px; text-align: left; box-shadow: none; }
+.theme-pop button:hover { background: var(--hover); }
+.theme-pop button .ic { margin-left: auto; visibility: hidden; color: var(--accent-ink); }
+.theme-pop button.on .ic { visibility: visible; }
+.swatch { display: inline-flex; flex: none; width: 34px; height: 20px; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+.swatch i { flex: 1; }

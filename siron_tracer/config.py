@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 AUDIT_SOURCES = ("unified", "traditional", "aud$", "cursor_cache")
+# colour themes: key -> (menu name, swatch colours)
+THEMES = {"siron": ("Siron (mavi)", ("#0b1324", "#2a78d6", "#f5f6f8")),
+          "odea": ("Odeabank (siyah · altın)", ("#141414", "#fed500", "#f6f5f2"))}
+UI_THEMES = tuple(THEMES)
 
 
 @dataclass
@@ -42,6 +46,7 @@ class Settings:
     sensitive_pattern: Optional[str] = None  # regex for column names, default in privacy.py
 
     # App
+    ui_theme: str = "siron"            # default colour theme: siron | odea (each user can switch in the top bar)
     sqlite_path: str = "data/siron_tracer.db"
     export_dir: str = "data/exports"
     log_dir: str = "data/logs"
@@ -106,6 +111,9 @@ def load_settings(path: Optional[str] = None) -> Settings:
     s.extract_max_rows = int(_get(cp, "app", "extract_max_rows", "SIRON_EXTRACT_MAX_ROWS", 0))
     s.mask_default = (_get(cp, "privacy", "mask_default", "SIRON_MASK_DEFAULT", "sensitive") or "sensitive").lower()
     s.sensitive_pattern = _get(cp, "privacy", "sensitive_pattern", "SIRON_SENSITIVE_PATTERN")
+    s.ui_theme = (_get(cp, "app", "ui_theme", "SIRON_UI_THEME", "siron") or "siron").lower()
+    if s.ui_theme not in UI_THEMES:
+        raise ValueError("ui_theme must be one of %s" % ", ".join(UI_THEMES))
     s.sqlite_path = _get(cp, "app", "sqlite_path", "SIRON_SQLITE_PATH", "data/siron_tracer.db")
     s.export_dir = _get(cp, "app", "export_dir", "SIRON_EXPORT_DIR", "data/exports")
     s.log_dir = _get(cp, "app", "log_dir", "SIRON_LOG_DIR", "data/logs")

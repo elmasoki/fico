@@ -1,4 +1,5 @@
 from catalog_fixture import make
+from test_features import env  # noqa: F401  (pytest fixture)
 
 from siron_tracer.finder import (cell_matches, mask_value, sample_sql, scan_result, searchable_columns,
                                  table_search_sql)
@@ -96,3 +97,20 @@ def test_dependency_resolution():
     cat = Catalog(list(CAT.tables.values()), {}, [], "v", deps)
     assert set(cat.underlying_tables(("S", "PKG"))) == {("S", "V1"), ("S", "T1"), ("S", "T2")}
     assert ("S", "PKG") in [k for k, _ in cat.used_by(("S", "T2"))]
+
+
+def test_colour_theme(env, tmp_path):
+    from siron_tracer.config import load_settings
+    client = env[0]
+    html = client.get("/").get_data(as_text=True)
+    assert 'data-brand="siron"' in html and 'data-brand="odea"' in html and "Odeabank" in html   # default + menu
+    assert "Varsayılan renk teması" in client.get("/settings").get_data(as_text=True)
+    ini = tmp_path / "c.ini"
+    ini.write_text("[oracle]\ndsn = x\n[siron]\ndb_user = SIRON\n[app]\nui_theme = Odea\n", encoding="utf-8")
+    assert load_settings(str(ini)).ui_theme == "odea"
+    ini.write_text("[oracle]\ndsn = x\n[siron]\ndb_user = SIRON\n[app]\nui_theme = mor\n", encoding="utf-8")
+    try:
+        load_settings(str(ini))
+        assert False, "unknown theme accepted"
+    except ValueError as exc:
+        assert "ui_theme" in str(exc)

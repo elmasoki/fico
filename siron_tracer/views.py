@@ -9,6 +9,7 @@ from flask import (Blueprint, Response, abort, flash, jsonify, redirect, render_
                    stream_with_context, url_for)
 
 from .catalog import ann, label
+from .config import THEMES
 from .coverage import SCREEN_STATUSES, compute as compute_coverage
 from .finder import MODES, sample_sql, scan_result, searchable_columns, table_search_sql
 from .jobs import JOB_KINDS
@@ -33,6 +34,7 @@ def _globals(state):
     state.app.jinja_env.globals.update(
         STATUSES=STATUSES, USAGE_LABELS=USAGE_LABELS, label=label, format_sql=format_sql, ann=ann,
         CAPTURE_KINDS=CAPTURE_KINDS, SCREEN_STATUSES=SCREEN_STATUSES, MASK_MODES=MASK_MODES,
+        THEMES=[(k, name, colors) for k, (name, colors) in THEMES.items()],
         JOB_KINDS=JOB_KINDS, RCONF=knowledge.CONFIDENCE, RCONF_HELP=knowledge.CONFIDENCE_HELP,
         research_of=knowledge.classify, explain_name=knowledge.explain_text, bind_segments_for=_unbound_segments,
         trace_sql=path_sql)

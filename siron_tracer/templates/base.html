@@ -1,13 +1,15 @@
 {%- from "_macros.html" import icon with context -%}
 {%- set ep = (request.endpoint or '').split('.')[-1] -%}
 <!doctype html>
-<html lang="tr">
+<html lang="tr" data-brand="{{ settings.ui_theme }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}{{ self.page_title() | striptags | trim or 'Siron SQL Tracer' }}{% endblock %} · Siron SQL Tracer</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<script>try { var t = localStorage.getItem("st-theme"); if (t) document.documentElement.setAttribute("data-theme", t); } catch (e) {}</script>
+<script>try { var t = localStorage.getItem("st-theme"), b = localStorage.getItem("st-brand");
+  if (t) document.documentElement.setAttribute("data-theme", t);
+  if (b) document.documentElement.setAttribute("data-brand", b); } catch (e) {}</script>
 </head>
 <body>
 {% include "_icons.html" %}
@@ -67,7 +69,15 @@
         <form class="search-box" action="{{ url_for('siron.search') }}">{{ icon('search') }}
           <input type="search" name="q" id="global-search" placeholder="Tablo, kolon, SQL, not ara…" value="{{ request.args.get('q', '') if ep == 'search' else '' }}"><kbd>/</kbd></form>
         <a class="icon-btn" href="{{ url_for('siron.jobs') }}" title="Arka plan işleri" id="jobs-btn">{{ icon('cpu') }}</a>
-        <button type="button" class="icon-btn" id="theme-btn" title="Tema değiştir">{{ icon('moon') }}</button>
+        <details class="theme-menu" id="brand-menu">
+          <summary class="icon-btn" title="Renk teması">{{ icon('palette') }}</summary>
+          <div class="theme-pop" role="menu">
+            <div class="t-label">Renk teması</div>
+            {% for key, name, colors in THEMES %}<button type="button" class="t-opt" data-brand="{{ key }}" role="menuitemradio">
+              <span class="swatch">{% for c in colors %}<i style="background:{{ c }}"></i>{% endfor %}</span>{{ name }}{{ icon('check') }}</button>{% endfor %}
+          </div>
+        </details>
+        <button type="button" class="icon-btn" id="theme-btn" title="Açık / koyu">{{ icon('moon') }}</button>
       </div>
     </header>
     <div class="toasts" id="toasts">
@@ -108,6 +118,12 @@
   function paint() { btn.innerHTML = '<svg class="ic"><use href="#i-' + (dark() ? 'sun' : 'moon') + '"/></svg>'; }
   btn.addEventListener("click", function () { var t = dark() ? "light" : "dark"; root.setAttribute("data-theme", t); try { localStorage.setItem("st-theme", t); } catch (e) {} paint(); });
   paint();
+  var menu = document.getElementById("brand-menu");
+  function mark() { var b = root.getAttribute("data-brand"); menu.querySelectorAll(".t-opt").forEach(function (o) { o.classList.toggle("on", o.dataset.brand === b); o.setAttribute("aria-checked", o.dataset.brand === b); }); }
+  menu.querySelectorAll(".t-opt").forEach(function (o) { o.addEventListener("click", function () {
+    root.setAttribute("data-brand", o.dataset.brand); try { localStorage.setItem("st-brand", o.dataset.brand); } catch (e) {} mark(); menu.open = false; }); });
+  document.addEventListener("click", function (e) { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+  mark();
   document.addEventListener("keydown", function (e) {
     if (e.key === "/" && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) { e.preventDefault(); document.getElementById("global-search").focus(); }
   });

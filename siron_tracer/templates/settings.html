@@ -20,6 +20,7 @@
       <dt>Bağlantı</dt><dd class="mono">{{ settings.oracle_user }}@{{ settings.oracle_dsn }}</dd>
       <dt>Şifre</dt><dd>{{ 'tanımlı' if settings.oracle_password else 'tanımsız' }}</dd>
       <dt>Audit kaynağı</dt><dd>{{ settings.audit_source }}</dd>
+      <dt>Varsayılan renk teması</dt><dd>{% for k, name, c in THEMES if k == settings.ui_theme %}{{ name }}{% endfor %} <span class="xs muted">· her kullanıcı üst çubuktaki {{ icon('palette') }} ile değiştirebilir</span></dd>
       <dt>Maskeleme</dt><dd>{{ MASK_MODES.get(settings.mask_default) }}</dd>
       <dt>Ekran satır sınırı</dt><dd>{{ settings.max_result_rows|thousands }}</dd>
       <dt>CSV dışa aktarma sınırı</dt><dd>{{ settings.max_export_rows|thousands }}</dd>

@@ -38,6 +38,10 @@ eşleme kararlarını yönetir ve taşınacak veriyi paketler.
 | Ekibe ne sunarız? | **Tek dosyalık HTML rapor** (yönetici özeti, veri sözlüğü, eşleme matrisi, ER, SQL'ler, sonuçlar), CSV/Excel çıktıları |
 | KVKK / denetim? | **Hassas veri tespiti** (TCKN, IBAN, telefon, ad-soyad… otomatik, kolon bazında düzeltilebilir), dışa aktarımlarda **maskeleme** (hassas / tümü / yok), **etkinlik günlüğü** (kim, ne zaman, hangi sorgu, kaç satır) |
 
+**Renk teması:** üst çubuktaki palet düğmesiyle **Siron (mavi)** ve **Odeabank (siyah · altın)** temaları arasında
+geçilir; açık/koyu mod her ikisinde de çalışır. Seçim tarayıcıda saklanır; herkes için varsayılan tema `config.ini`'de
+`[app] ui_theme = odea` ile belirlenir.
+
 Ayrıca: literal farkıyla çoğalan SQL'lerin gruplanması (bind kullanmayan uygulamalar için), SQL biçimlendirme,
 global arama (`/` kısayolu), uzun işlemler için ilerleme gösteren arka plan işleri.
 
@@ -130,7 +134,8 @@ Audit'i kendi yönteminizle açın (19c unified auditing). Uygulama politikanın
 | ![Taşıma sorgusu üretme](docs/screenshots/36_tasima_sorgusu.png) | ![Taşıma paketinde ekran sorguları](docs/screenshots/37_tasima_ekran_sorgulari.png) |
 | ![Kayıt izi](docs/screenshots/38_kayit_izi.png) | ![Kayıt izi sonucu](docs/screenshots/39_kayit_izi_sonuc.png) |
 | ![Sorgu defteri](docs/screenshots/40_sorgu_defteri.png) | ![Sorgu, sürümler ve doğrulama senaryoları](docs/screenshots/41_sorgu_defteri_sorgu.png) |
-| ![Doğrulama raporu](docs/screenshots/42_dogrulama_raporu.png) | |
+| ![Doğrulama raporu](docs/screenshots/42_dogrulama_raporu.png) | ![Odeabank teması](docs/screenshots/43_tema_odeabank.png) |
+| ![Odeabank teması, koyu](docs/screenshots/44_tema_odeabank_koyu.png) | |
 
 ## Araştırma bölümü
 
