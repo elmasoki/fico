@@ -17,7 +17,7 @@
     <div class="card-body"><pre>{{ format_sql(st.sql_text) }}</pre>
       <details class="adv mt8"><summary>{{ icon('chev') }}Orijinal metin</summary><pre id="orig">{{ st.sql_text }}</pre></details></div>
   </div>
-<form method="post" class="card">
+<form method="post" class="card" action="#sonuc">
   <input type="hidden" name="rec" value="{{ execution.record_id }}">
   <div class="card-head"><h2>{{ icon('zap') }}Bind değerleri ve çalıştırma</h2><span class="meta">salt-okunur · en fazla {{ settings.max_result_rows }} satır ekranda</span></div>
   <div class="card-body">
@@ -117,8 +117,23 @@
 
 
 
+<div id="sonuc"></div>
 {% if error %}<div class="callout err">{{ icon('alert') }}<div>{{ error }}</div></div>{% endif %}
 {% if result %}<div class="card"><div class="card-head"><h2>{{ icon('table') }}Sonuç</h2></div>{{ results_table(result, sources) }}</div>{% endif %}
+
+{% set prev_id, next_id, pos, total = run_nav %}
+{% if prev_id or next_id %}
+<div class="run-nav" id="run-nav">
+  {% if prev_id %}<form method="post" action="{{ url_for('siron.statement', capture_id=capture.id, sql_id=prev_id, **nav_args) }}#sonuc">
+    <input type="hidden" name="do" value="run"><button class="btn-secondary" data-busy="Çalışıyor" title="{{ prev_id }}">{{ icon('chev', 'flip') }}Önceki</button></form>
+  {% else %}<span></span>{% endif %}
+  <div class="run-nav-mid"><b>{% if pos %}SQL {{ pos }} / {{ total }}{% else %}{{ total }} SQL{% endif %}</b>
+    <span class="xs muted">yakalama özetindeki sırayla · yalnız SELECT'ler{% if capture.excluded_sources %} · kaynak filtresi uygulandı{% endif %}{% if nav_args.noise == '1' %} · gürültü hariç{% endif %}</span></div>
+  {% if next_id %}<form method="post" action="{{ url_for('siron.statement', capture_id=capture.id, sql_id=next_id, **nav_args) }}#sonuc">
+    <input type="hidden" name="do" value="run"><button class="btn-primary" data-busy="Çalışıyor" title="{{ next_id }}">Sonraki SQL'i çalıştır{{ icon('chev') }}</button></form>
+  {% else %}<span class="small muted">Son SQL</span>{% endif %}
+</div>
+{% endif %}
 
 {% if variants %}
 <div class="card">

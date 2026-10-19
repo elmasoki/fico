@@ -537,6 +537,27 @@ def _labels(sources):
     return [label(s) if s else "" for s in sources]
 
 
+def run_order(capture, sql_id, first_ts, exclude_noise=True, grouped=True):
+    """(previous, next, position, total) among the runnable SQLs of the capture summary list.
+
+    Same list and order as the summary: excluded sources dropped, noise hidden and literal
+    variants folded into one row unless the summary was switched otherwise. Only SELECTs are
+    stepped through, since only they can be run here.
+    """
+    ca = capture_analysis(capture, exclude_noise and not capture["is_noise"])
+    rows = list(ca.groups.values()) if grouped else [[s] for s in ca.statements]
+    order = [(g[0].sql_id, g[0].first_ts, {s.sql_id for s in g}) for g in rows if g[0].is_select]
+    pos = next((i for i, (_, _, members) in enumerate(order) if sql_id in members), None)
+    if pos is None:                       # a SQL not in the list (noise, variant, other source): place by time
+        nxt = next((i for i, (_, ts, _) in enumerate(order) if ts > first_ts), None)
+        prev = len(order) - 1 if nxt is None else nxt - 1
+        prev = prev if prev >= 0 else None
+        return (order[prev][0] if prev is not None else None, order[nxt][0] if nxt is not None else None,
+                None, len(order))
+    return (order[pos - 1][0] if pos > 0 else None, order[pos + 1][0] if pos + 1 < len(order) else None,
+            pos + 1, len(order))
+
+
 @bp.route("/captures/<int:capture_id>/sql/<sql_id>", methods=["GET", "POST"])
 def statement(capture_id, sql_id):
     settings, oracle, store = ctx()
@@ -545,6 +566,7 @@ def statement(capture_id, sql_id):
     st = ca.statement(sql_id)
     if st is None:
         abort(404)
+    nav_args = {"noise": request.args.get("noise", "1"), "group": request.args.get("group", "1")}
     catalog = get_catalog()
     schema = capture_schema(capture)
 
@@ -607,7 +629,8 @@ def statement(capture_id, sql_id):
                            slots=slots, literal=literal, result=result, error=error, sources=_labels(sources),
                            cursor=cursor, cursor_error=cursor_error, relations=relations, variants=variants,
                            columns=sorted(st.insight.columns.items(), key=lambda kv: tuple(x or "" for x in kv[0])),
-                           missing=any(s.missing for s in slots), schema=schema)
+                           missing=any(s.missing for s in slots), schema=schema, nav_args=nav_args,
+                           run_nav=run_order(capture, sql_id, st.first_ts, nav_args["noise"] == "1", nav_args["group"] == "1"))
 
 
 @bp.route("/sql", methods=["GET", "POST"])

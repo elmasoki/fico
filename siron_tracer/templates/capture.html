@@ -105,7 +105,7 @@
       {% set s = group[0] if grouped else group %}{% set n = group|length if grouped else 1 %}
       <tr>
         <td class="small nowrap muted">{{ s.first_ts[11:23] }}</td>
-        <td class="nowrap"><a class="mono" href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=s.sql_id) }}">{{ s.sql_id }}</a>{% if n > 1 %}<span class="badge info" title="Yalnızca literal değerleri farklı {{ n }} SQL">+{{ n - 1 }} varyant</span>{% endif %}</td>
+        <td class="nowrap"><a class="mono" href="{{ url_for('siron.statement', capture_id=capture.id, sql_id=s.sql_id, noise='1' if exclude_noise else '0', group='1' if grouped else '0') }}">{{ s.sql_id }}</a>{% if n > 1 %}<span class="badge info" title="Yalnızca literal değerleri farklı {{ n }} SQL">+{{ n - 1 }} varyant</span>{% endif %}</td>
         <td class="nowrap">{{ s.action or '' }}{% if s.failed %} <span class="badge err">{{ s.failed }} hata</span>{% endif %}</td>
         <td class="num">{{ (group|sum(attribute='exec_count')) if grouped else s.exec_count }}</td><td class="num">{{ s.bind_sets|length }}</td>
         <td class="small">{% for t in s.tables[:4] %}<span class="badge">{{ t[1] }}</span>{% endfor %}{% if s.tables|length > 4 %}<span class="muted xs">+{{ s.tables|length - 4 }}</span>{% endif %}</td>

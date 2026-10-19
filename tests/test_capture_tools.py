@@ -204,3 +204,29 @@ def test_screen_extract_all(env):
     assert "Detay · Liste" in html and "Taşıma sorguları" in html
     client.post("/inventory", data={"action": "delete", "id": sid})
     assert all(q["screen_id"] is None for q in store.extract_queries())      # queries survive, unlinked
+
+
+def test_step_through_capture_sqls(env):
+    client, oracle, store, _ = env
+    q3 = "SELECT name FROM customer WHERE id = :1"
+    upd = "UPDATE alert SET status = :1 WHERE alert_id = :2"
+    cid = capture(client, store, oracle, [rec(1, Q1, " #1(1):7"), rec(2, upd, " #1(1):X #2(1):1", action="UPDATE"),
+                                          other(3, q3, " #1(1):9"), rec(4, Q2, " #1(4):OPEN #2(5):C0042")])
+    keep = next(src.key for src in breakdown(store.records(cid)) if src.os_user == "app")
+    client.post("/captures/%d/sources" % cid, data={"keep": [keep]})
+    summary = client.get("/captures/%d" % cid).get_data(as_text=True)
+    assert "/sql/%s?noise=1&amp;group=1" % S1 in summary                     # list settings carried to the SQL page
+
+    page = client.get("/captures/%d/sql/%s?noise=1&group=1" % (cid, S1)).get_data(as_text=True)
+    nav = page.split('id="run-nav"')[1]
+    assert "SQL 1 / 2" in nav and "kaynak filtresi uygulandı" in nav and "Önceki" not in nav   # UPDATE, other source skipped
+    assert "/sql/%s?noise=1&amp;group=1#sonuc" % S2 in nav and "Sonraki SQL" in nav
+
+    page = client.post("/captures/%d/sql/%s?noise=1&group=1" % (cid, S2), data={"do": "run"}).get_data(as_text=True)
+    assert oracle.ran[-1][0] == "SELECT * FROM alert WHERE status = 'OPEN' AND cust_no = 'C0042'"   # its own binds
+    nav = page.split('id="run-nav"')[1]
+    assert "SQL 2 / 2" in nav and "Önceki" in nav and "Son SQL" in nav and "/sql/%s?" % S1 in nav
+
+    # a SQL outside the list (here the UPDATE) is placed by time
+    nav = client.get("/captures/%d/sql/%s" % (cid, compute_sql_id(upd))).get_data(as_text=True).split('id="run-nav"')[1]
+    assert "/sql/%s?" % S1 in nav and "/sql/%s?" % S2 in nav and "2 SQL" in nav
